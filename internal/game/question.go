@@ -13,11 +13,9 @@ const (
 	PublicRole
 	Awards
 	Hint
-	Recap
-	MakeAGuess
 )
 
-var Questions = []Question{Alive, Gender, Field, Continent, BirthDecade, ActiveEra, Languages, PublicRole, Awards, Hint, Recap, MakeAGuess}
+var Questions = []Question{Alive, Gender, Field, Continent, BirthDecade, ActiveEra, Languages, PublicRole, Awards, Hint}
 
 var questionText = map[Question]string{
 	Alive:       "Are they alive?",
@@ -30,8 +28,6 @@ var questionText = map[Question]string{
 	PublicRole:  "Do they perform in front of an audience?",
 	Awards:      "Have they won a major international award?",
 	Hint:        "Give me a one-sentence hint",
-	Recap:       "Recap the questions",
-	MakeAGuess:  "Make a guess!",
 }
 
 func (q Question) Aliases() []string {

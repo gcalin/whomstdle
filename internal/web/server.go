@@ -23,7 +23,7 @@ var tmpl = template.Must(template.ParseFS(templateFS, "templates/*.html"))
 // pageData is sent once inside the page; the browser searches it as the player types.
 var pageData = func() map[string]any {
 	var qs, people []map[string]any
-	for _, q := range game.Questions[:game.Recap] {
+	for _, q := range game.Questions {
 		qs = append(qs, map[string]any{"id": int(q), "text": q.Text(), "aliases": q.Aliases()})
 	}
 	for _, p := range game.People {
@@ -87,7 +87,7 @@ func NewHandler(now func() time.Time) http.Handler {
 
 	mux.HandleFunc("POST /ask/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.Atoi(r.PathValue("id"))
-		if err != nil || id < 0 || id >= int(game.Recap) {
+		if err != nil || id < 0 || id >= len(game.Questions) {
 			http.NotFound(w, r)
 			return
 		}
