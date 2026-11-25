@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Whomstdle</title>
+  <script src="https://unpkg.com/htmx.org@2"></script>
+  <style>
+    :root { --accent: #2f6fdb; --border: #e3e6ea; --muted: #6b7280; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.6 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: #222; }
+    header { border-bottom: 1px solid var(--border); background: #f7f8fa; }
+    header div, main { max-width: 680px; margin: 0 auto; padding: 0 20px; }
+    header h1 { margin: 0; padding: 14px 0; font-size: 20px; letter-spacing: -.2px; }
+    header h1 span { color: var(--accent); }
+    main { padding-top: 32px; padding-bottom: 60px; }
+    .hero { font-size: 28px; line-height: 1.25; margin: 0 0 6px; letter-spacing: -.5px; }
+    .sub { margin: 0 0 8px; color: var(--muted); }
+    h2 { display: flex; align-items: center; gap: 10px; font-size: 18px; margin: 32px 0 10px; }
+    h2 i { font-style: normal; font-size: 13px; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; }
+    .search { position: relative; }
+    input { width: 100%; font: inherit; padding: 12px 14px; border: 1px solid var(--border); border-radius: 6px; }
+    input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+    .search ul { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 1; margin: 0; padding: 4px 0; list-style: none; max-height: 260px; overflow: auto; background: #fff; border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+    .search ul:empty { display: none; }
+    .search button { display: block; width: 100%; text-align: left; font: inherit; padding: 9px 14px; border: 0; background: none; cursor: pointer; }
+    .search button:hover, .search button.active { background: #eef3fd; color: var(--accent); }
+    .card { border: 1px solid var(--border); border-radius: 6px; padding: 4px 18px; }
+    #answers { list-style: none; margin: 0; padding: 0; }
+    #answers li { padding: 10px 0; border-bottom: 1px solid var(--border); }
+    #answers li:last-child { border-bottom: 0; }
+    #answers span { display: block; font-size: 13px; color: var(--muted); }
+    #answers:empty::before { content: "Nothing yet. Ask your first question above."; display: block; padding: 10px 0; color: var(--muted); }
+    #result p { margin: 12px 0 0; padding: 10px 14px; border-radius: 6px; font-weight: 600; }
+    #guesses { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; list-style: none; margin: 12px 0 0; padding: 0; }
+    #guesses:empty { display: none; }
+    #guesses:not(:empty)::before { content: "Already tried:"; color: var(--muted); font-size: 14px; }
+    #guesses li { padding: 2px 12px; border-radius: 99px; background: #fdeeee; color: #a12a2a; font-size: 14px; }
+    .ok { background: #e8f6ec; color: #1d6b35; }
+    .no { background: #fdeeee; color: #a12a2a; }
+  </style>
+</head>
+<body>
+  <header><div><h1>whomst<span>dle</span></h1></div></header>
+  <main>
+    <p class="hero">Who's the mystery person?</p>
+    <p class="sub">Ask questions, collect clues, then make your guess.</p>
+
+    <h2><i>1</i> Ask a question</h2>
+    <div class="search">
+      <input id="q" name="q" placeholder="Start typing, e.g. “Where are they from?”" autocomplete="off"
+             hx-get="/questions" hx-trigger="input delay:150ms" hx-target="#qlist">
+      <ul id="qlist" hx-on::after-request="const i=document.getElementById('q'); i.value=''; i.focus(); this.innerHTML=''"></ul>
+    </div>
+
+    <h2><i>2</i> What you know</h2>
+    <div class="card"><ol id="answers">{{range .Answers}}{{template "answer.html" .}}{{end}}</ol></div>
+
+    <h2><i>3</i> Make a guess</h2>
+    <div class="search">
+      <input id="g" name="q" placeholder="Start typing a name" autocomplete="off"
+             hx-get="/search" hx-trigger="input delay:150ms" hx-target="#glist">
+      <ul id="glist" hx-on::after-request="const i=document.getElementById('g'); i.value=''; i.focus(); this.innerHTML=''"></ul>
+    </div>
+    <div id="result"></div>
+    <ul id="guesses">{{range .Tried}}<li>{{.}}</li>{{end}}</ul>
+  </main>
+  <script>
+    // Arrow keys move through the dropdown, Enter picks the highlighted item (the first by default).
+    document.querySelectorAll('.search').forEach(box => {
+      const input = box.querySelector('input'), list = box.querySelector('ul');
+      const items = () => [...list.querySelectorAll('button')];
+      const current = () => items().findIndex(b => b.classList.contains('active'));
+      const mark = i => {
+        items().forEach((b, n) => b.classList.toggle('active', n === i));
+        items()[i]?.scrollIntoView({block: 'nearest'});
+      };
+      list.addEventListener('htmx:afterSwap', () => mark(0));
+      input.addEventListener('keydown', e => {
+        const n = items().length;
+        if (!n) return;
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          mark((current() + (e.key === 'ArrowDown' ? 1 : -1) + n) % n);
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          items()[Math.max(current(), 0)].click();
+        }
+      });
+    });
+  </script>
+</body>
+</html>

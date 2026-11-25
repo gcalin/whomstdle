@@ -1,0 +1,134 @@
+// Package web serves the game in the browser: html/template pages plus htmx fragments.
+package web
+
+import (
+	"crypto/rand"
+	"embed"
+	"encoding/hex"
+	"html/template"
+	"net/http"
+	"slices"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/gcalin/whomstdle/internal/game"
+)
+
+//go:embed templates/*.html
+var templateFS embed.FS
+
+var tmpl = template.Must(template.ParseFS(templateFS, "templates/*.html"))
+
+// state is one player's progress for one day.
+type state struct {
+	Asked []game.Question
+	Tried []string
+}
+
+type server struct {
+	now   func() time.Time
+	mu    sync.Mutex // guards games: handlers run concurrently
+	games map[string]*state
+}
+
+// play runs f on the caller's game for today. Handlers must not write the response inside f.
+func (s *server) play(w http.ResponseWriter, r *http.Request, f func(*state)) {
+	c, err := r.Cookie("player")
+	if err != nil {
+		b := make([]byte, 16)
+		rand.Read(b)
+		c = &http.Cookie{Name: "player", Value: hex.EncodeToString(b), Path: "/", MaxAge: 365 * 24 * 3600, HttpOnly: true, SameSite: http.SameSiteLaxMode}
+		http.SetCookie(w, c)
+	}
+	key := c.Value + s.now().UTC().Format("2006-01-02")
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.games[key]
+	if st == nil {
+		st = &state{}
+		s.games[key] = st
+	}
+	f(st)
+}
+
+// NewHandler returns the game's HTTP routes. now supplies the current time so tests can fix the day.
+func NewHandler(now func() time.Time) http.Handler {
+	s := &server{now: now, games: map[string]*state{}}
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		var d struct {
+			Answers []map[string]string
+			Tried   []string
+		}
+		s.play(w, r, func(st *state) {
+			for _, q := range slices.Backward(st.Asked) {
+				d.Answers = append(d.Answers, map[string]string{"Question": q.Text(), "Answer": game.TodaysPerson(now()).Answer(q)})
+			}
+			d.Tried = slices.Clone(st.Tried)
+		})
+		tmpl.ExecuteTemplate(w, "index.html", d)
+	})
+
+	mux.HandleFunc("GET /questions", func(w http.ResponseWriter, r *http.Request) {
+		var found []game.Question
+		s.play(w, r, func(st *state) { found = game.SearchQuestions(r.URL.Query().Get("q"), st.Asked) })
+		var qs []map[string]any
+		for _, q := range found {
+			qs = append(qs, map[string]any{"ID": int(q), "Text": q.Text()})
+		}
+		tmpl.ExecuteTemplate(w, "questions.html", qs)
+	})
+
+	mux.HandleFunc("POST /ask/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(r.PathValue("id"))
+		if err != nil || id < 0 || id >= int(game.Recap) {
+			http.NotFound(w, r)
+			return
+		}
+		q := game.Questions[id]
+		fresh := false
+		s.play(w, r, func(st *state) {
+			if fresh = !slices.Contains(st.Asked, q); fresh {
+				st.Asked = append(st.Asked, q)
+			}
+		})
+		if !fresh {
+			w.WriteHeader(http.StatusNoContent) // already asked: htmx leaves the page alone
+			return
+		}
+		tmpl.ExecuteTemplate(w, "answer.html", map[string]string{
+			"Question": q.Text(),
+			"Answer":   game.TodaysPerson(now()).Answer(q),
+		})
+	})
+
+	mux.HandleFunc("GET /search", func(w http.ResponseWriter, r *http.Request) {
+		var names []string
+		s.play(w, r, func(st *state) { names = game.Search(r.URL.Query().Get("q"), st.Tried) })
+		tmpl.ExecuteTemplate(w, "options.html", names)
+	})
+
+	mux.HandleFunc("POST /guess", func(w http.ResponseWriter, r *http.Request) {
+		guess := r.FormValue("guess")
+		target := game.TodaysPerson(now())
+		p, known := game.FindPerson(guess)
+		correct := known && p == target
+		wrong := ""
+		if known && !correct {
+			s.play(w, r, func(st *state) {
+				if !slices.Contains(st.Tried, p.Name) {
+					st.Tried = append(st.Tried, p.Name)
+					wrong = p.Name
+				}
+			})
+		}
+		tmpl.ExecuteTemplate(w, "guess.html", map[string]any{
+			"Guess": guess, "Known": known, "Correct": correct, "Name": target.Name, "Wrong": wrong,
+		})
+	})
+
+	return mux
+}

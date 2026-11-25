@@ -7,7 +7,7 @@ type Person struct {
 }
 
 func (p *Person) Answer(q Question) string {
-	return q.Prefix() + p.Answers[q] + "."
+	return p.Answers[q]
 }
 
 var People = []Person{
@@ -15,30 +15,26 @@ var People = []Person{
 		Name:    "Andrei Boboc",
 		Aliases: []string{"Boboc"},
 		Answers: map[Question]string{
-			Alive:    "Yes",
-			KnownFor: "AI Engineering and unpredictable bowel movements",
-			Weight:   "200kg",
-			Gender:   "Male",
+			Alive: "Yes", Gender: "Man", Field: "Science & tech", Continent: "Europe",
+			BirthDecade: "1990s", ActiveEra: "2020s", Languages: "Romanian, English",
+			PublicRole: "No", Awards: "No", Hint: "AI engineer with unpredictable bowel movements",
 		},
 	},
 	{
 		Name:    "Nihal",
 		Aliases: []string{"Mihai Daniel Filologie", "Mihai Iosub"},
 		Answers: map[Question]string{
-			Alive:    "Yes",
-			KnownFor: "being a communist thought leader & mobile gamer",
-			Weight:   "110kg",
-			Gender:   "Male",
+			Alive: "Yes", Gender: "Man", Field: "Other", Continent: "Europe",
+			BirthDecade: "1990s", ActiveEra: "2020s", Languages: "Romanian, English",
+			PublicRole: "No", Awards: "No", Hint: "Communist thought leader and mobile gamer",
 		},
 	},
 	{
-		Name:    "Michael Jackson",
-		Aliases: nil,
+		Name: "Michael Jackson",
 		Answers: map[Question]string{
-			Alive:    "Yes",
-			KnownFor: "being the king of pop music",
-			Weight:   "45kg",
-			Gender:   "Male",
+			Alive: "No", Gender: "Man", Field: "Music", Continent: "North America",
+			BirthDecade: "1950s", ActiveEra: "1970s, 1980s, 1990s", Languages: "English",
+			PublicRole: "Yes", Awards: "Yes", Hint: "The king of pop",
 		},
 	},
 }

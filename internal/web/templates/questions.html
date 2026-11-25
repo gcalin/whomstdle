@@ -1,0 +1,1 @@
+{{range .}}<li><button type="button" hx-post="/ask/{{.ID}}" hx-target="#answers" hx-swap="afterbegin">{{.Text}}</button></li>{{end}}
