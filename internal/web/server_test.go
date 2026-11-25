@@ -33,8 +33,9 @@ func client() func(method, path string, form url.Values) *httptest.ResponseRecor
 }
 
 func TestIndex(t *testing.T) {
-	if rec := client()("GET", "/", nil); rec.Code != 200 || !strings.Contains(rec.Body.String(), "hx-get") {
-		t.Fatalf("unexpected response: %d", rec.Code)
+	rec := client()("GET", "/", nil)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Why are they famous?") || !strings.Contains(rec.Body.String(), "Michael Jackson") {
+		t.Fatalf("page should embed the question aliases and names: %d", rec.Code)
 	}
 }
 
@@ -55,17 +56,6 @@ func TestAsk(t *testing.T) {
 	}
 }
 
-func TestQuestions(t *testing.T) {
-	do := client()
-	if body := do("GET", "/questions?q=where+are+they", nil).Body.String(); !strings.Contains(body, "Which continent") {
-		t.Fatalf("got %q", body)
-	}
-	do("POST", "/ask/3", nil)
-	if body := do("GET", "/questions?q=where+are+they", nil).Body.String(); strings.Contains(body, "Which continent") {
-		t.Fatalf("asked question still listed: %q", body)
-	}
-}
-
 func TestGuess(t *testing.T) {
 	do := client()
 	target := game.TodaysPerson(day).Name
@@ -75,16 +65,8 @@ func TestGuess(t *testing.T) {
 	if body := do("POST", "/guess", url.Values{"guess": {"Nobody"}}).Body.String(); strings.Contains(body, "That's right") {
 		t.Fatalf("wrong guess accepted: %q", body)
 	}
-}
-
-func TestSearch(t *testing.T) {
-	do := client()
-	if body := do("GET", "/search?q=mich", nil).Body.String(); !strings.Contains(body, "Michael Jackson") {
-		t.Fatalf("got %q", body)
-	}
-	// Michael Jackson is not today's person, so this guess is wrong and gets remembered.
-	do("POST", "/guess", url.Values{"guess": {"Michael Jackson"}})
-	if body := do("GET", "/search?q=mich", nil).Body.String(); strings.Contains(body, "Michael Jackson") {
-		t.Fatalf("tried guess still listed: %q", body)
+	do("POST", "/guess", url.Values{"guess": {"Michael Jackson"}}) // wrong, so remembered
+	if body := do("GET", "/", nil).Body.String(); !strings.Contains(body, "<li>Michael Jackson</li>") {
+		t.Fatalf("tried guess lost on reload: %q", body)
 	}
 }

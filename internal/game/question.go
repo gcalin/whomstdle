@@ -34,6 +34,10 @@ var questionText = map[Question]string{
 	MakeAGuess:  "Make a guess!",
 }
 
+func (q Question) Aliases() []string {
+	return aliases[q]
+}
+
 func (q Question) Text() string {
 	return questionText[q]
 }

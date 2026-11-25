@@ -20,6 +20,18 @@ var templateFS embed.FS
 
 var tmpl = template.Must(template.ParseFS(templateFS, "templates/*.html"))
 
+// pageData is sent once inside the page; the browser searches it as the player types.
+var pageData = func() map[string]any {
+	var qs, people []map[string]any
+	for _, q := range game.Questions[:game.Recap] {
+		qs = append(qs, map[string]any{"id": int(q), "text": q.Text(), "aliases": q.Aliases()})
+	}
+	for _, p := range game.People {
+		people = append(people, map[string]any{"name": p.Name, "aliases": p.Aliases})
+	}
+	return map[string]any{"questions": qs, "people": people}
+}()
+
 // state is one player's progress for one day.
 type state struct {
 	Asked []game.Question
@@ -59,27 +71,18 @@ func NewHandler(now func() time.Time) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		var d struct {
-			Answers []map[string]string
+		d := struct {
+			Answers []map[string]any
 			Tried   []string
-		}
+			Data    any
+		}{Data: pageData}
 		s.play(w, r, func(st *state) {
 			for _, q := range slices.Backward(st.Asked) {
-				d.Answers = append(d.Answers, map[string]string{"Question": q.Text(), "Answer": game.TodaysPerson(now()).Answer(q)})
+				d.Answers = append(d.Answers, map[string]any{"ID": int(q), "Question": q.Text(), "Answer": game.TodaysPerson(now()).Answer(q)})
 			}
 			d.Tried = slices.Clone(st.Tried)
 		})
 		tmpl.ExecuteTemplate(w, "index.html", d)
-	})
-
-	mux.HandleFunc("GET /questions", func(w http.ResponseWriter, r *http.Request) {
-		var found []game.Question
-		s.play(w, r, func(st *state) { found = game.SearchQuestions(r.URL.Query().Get("q"), st.Asked) })
-		var qs []map[string]any
-		for _, q := range found {
-			qs = append(qs, map[string]any{"ID": int(q), "Text": q.Text()})
-		}
-		tmpl.ExecuteTemplate(w, "questions.html", qs)
 	})
 
 	mux.HandleFunc("POST /ask/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -99,16 +102,11 @@ func NewHandler(now func() time.Time) http.Handler {
 			w.WriteHeader(http.StatusNoContent) // already asked: htmx leaves the page alone
 			return
 		}
-		tmpl.ExecuteTemplate(w, "answer.html", map[string]string{
+		tmpl.ExecuteTemplate(w, "answer.html", map[string]any{
+			"ID":       id,
 			"Question": q.Text(),
 			"Answer":   game.TodaysPerson(now()).Answer(q),
 		})
-	})
-
-	mux.HandleFunc("GET /search", func(w http.ResponseWriter, r *http.Request) {
-		var names []string
-		s.play(w, r, func(st *state) { names = game.Search(r.URL.Query().Get("q"), st.Tried) })
-		tmpl.ExecuteTemplate(w, "options.html", names)
 	})
 
 	mux.HandleFunc("POST /guess", func(w http.ResponseWriter, r *http.Request) {

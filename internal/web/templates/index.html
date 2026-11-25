@@ -48,9 +48,8 @@
 
     <h2><i>1</i> Ask a question</h2>
     <div class="search">
-      <input id="q" name="q" placeholder="Start typing, e.g. “Where are they from?”" autocomplete="off"
-             hx-get="/questions" hx-trigger="input delay:150ms" hx-target="#qlist">
-      <ul id="qlist" hx-on::after-request="const i=document.getElementById('q'); i.value=''; i.focus(); this.innerHTML=''"></ul>
+      <input id="q" placeholder="Start typing, e.g. “Where are they from?”" autocomplete="off">
+      <ul id="qlist"></ul>
     </div>
 
     <h2><i>2</i> What you know</h2>
@@ -58,15 +57,40 @@
 
     <h2><i>3</i> Make a guess</h2>
     <div class="search">
-      <input id="g" name="q" placeholder="Start typing a name" autocomplete="off"
-             hx-get="/search" hx-trigger="input delay:150ms" hx-target="#glist">
-      <ul id="glist" hx-on::after-request="const i=document.getElementById('g'); i.value=''; i.focus(); this.innerHTML=''"></ul>
+      <input id="g" placeholder="Start typing a name" autocomplete="off">
+      <ul id="glist"></ul>
     </div>
     <div id="result"></div>
     <ul id="guesses">{{range .Tried}}<li>{{.}}</li>{{end}}</ul>
   </main>
+  <script type="application/json" id="data">{{.Data}}</script>
   <script>
-    // Arrow keys move through the dropdown, Enter picks the highlighted item (the first by default).
+    const data = JSON.parse(document.getElementById('data').textContent);
+
+    // Every typed word must appear in the text; case and punctuation are ignored.
+    const norm = s => s.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '');
+    const matches = (typed, texts) => {
+      const words = norm(typed).split(/\s+/).filter(Boolean);
+      return words.length > 0 && texts.some(t => words.every(w => norm(t).includes(w)));
+    };
+    const esc = s => s.replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+    // What the player already used is read from the page, which the server rendered.
+    const onPage = (selector, read) => new Set([...document.querySelectorAll(selector)].map(read));
+
+    const buttons = {
+      qlist: typed => {
+        const asked = onPage('#answers li', li => +li.dataset.id);
+        return data.questions.filter(q => !asked.has(q.id) && matches(typed, [q.text, ...(q.aliases || [])]))
+          .map(q => `<button type="button" hx-post="/ask/${q.id}" hx-target="#answers" hx-swap="afterbegin">${esc(q.text)}</button>`);
+      },
+      glist: typed => {
+        const tried = onPage('#guesses li', li => li.textContent);
+        return data.people.filter(p => !tried.has(p.name) && matches(typed, [p.name, ...(p.aliases || [])]))
+          .map(p => `<button type="button" hx-post="/guess" name="guess" value="${esc(p.name)}" hx-target="#result">${esc(p.name)}</button>`);
+      },
+    };
+
+    // Each search box: filter as you type; arrow keys move through the list, Enter picks (the first by default).
     document.querySelectorAll('.search').forEach(box => {
       const input = box.querySelector('input'), list = box.querySelector('ul');
       const items = () => [...list.querySelectorAll('button')];
@@ -75,7 +99,16 @@
         items().forEach((b, n) => b.classList.toggle('active', n === i));
         items()[i]?.scrollIntoView({block: 'nearest'});
       };
-      list.addEventListener('htmx:afterSwap', () => mark(0));
+      input.addEventListener('input', () => {
+        list.innerHTML = buttons[list.id](input.value).map(b => `<li>${b}</li>`).join('');
+        htmx.process(list);
+        mark(0);
+      });
+      list.addEventListener('htmx:afterRequest', () => {
+        input.value = '';
+        list.innerHTML = '';
+        input.focus();
+      });
       input.addEventListener('keydown', e => {
         const n = items().length;
         if (!n) return;
