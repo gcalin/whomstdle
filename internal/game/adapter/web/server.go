@@ -2,16 +2,15 @@
 package web
 
 import (
-	"crypto/rand"
 	"embed"
+	"errors"
 	"html/template"
 	"log"
 	"net/http"
 	"slices"
 	"strconv"
-	"strings"
-	"time"
 
+	"github.com/gcalin/whomstdle/internal/game/app"
 	"github.com/gcalin/whomstdle/internal/game/domain"
 )
 
@@ -27,145 +26,107 @@ func render(w http.ResponseWriter, name string, data any) {
 	}
 }
 
-// pageData is sent once inside the page; the browser searches it as the player types.
-var pageData = func() map[string]any {
-	var qs, people []map[string]any
-	for _, q := range domain.Questions {
-		qs = append(qs, map[string]any{"id": int(q), "text": q.Text(), "aliases": q.Aliases()})
-	}
-	// Sorted by name: the order in domain.People must not hint at the answer.
-	sorted := slices.Clone(domain.People)
-	slices.SortFunc(sorted, func(a, b domain.Person) int { return strings.Compare(a.Name, b.Name) })
-	for _, p := range sorted {
-		people = append(people, map[string]any{"id": int(p.ID), "name": p.Name, "aliases": p.Aliases})
-	}
-	return map[string]any{"questions": qs, "people": people}
-}()
-
 type server struct {
-	now   func() time.Time
-	store memStore
-	mux   *http.ServeMux
+	svc *app.Service
+	mux *http.ServeMux
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
 
-// playerID returns the player cookie, and creates it when it is missing.
-func playerID(w http.ResponseWriter, r *http.Request) domain.PlayerID {
-	if c, err := r.Cookie("player"); err == nil {
-		return domain.PlayerID(c.Value)
-	}
-	id := rand.Text()
-	http.SetCookie(w, &http.Cookie{Name: "player", Value: id, Path: "/", MaxAge: 365 * 24 * 3600, HttpOnly: true, SameSite: http.SameSiteLaxMode})
-	return domain.PlayerID(id)
-}
-
-// playData is what play.html draws: the whole game area of game g for puzzle n.
-// msg is shown only while the game is being played.
-func playData(n domain.Puzzle, g domain.Game, msg string) map[string]any {
-	person := domain.PersonFor(n)
-	answer := func(q domain.Question) map[string]any {
-		return map[string]any{"ID": int(q), "Question": q.Text(), "Answer": person.Answer(q)}
-	}
-	if g.Finished() {
-		var all []map[string]any
-		for _, q := range domain.Questions {
-			all = append(all, answer(q))
-		}
-		// No score after giving up: giving up at once would score 0, the best score.
-		summary := count(len(g.Asked), "question", "questions") + ", " + count(len(g.Tried), "miss", "misses")
-		if g.Status == domain.Solved {
-			summary = "Score " + strconv.Itoa(g.Score()) + ": " + summary
-		}
-		return map[string]any{"Finished": true, "Won": g.Status == domain.Solved, "Name": person.Name, "Answers": all, "Summary": summary}
-	}
-	var answers []map[string]any
-	for _, q := range slices.Backward(g.Asked) {
-		answers = append(answers, answer(q))
-	}
-	var tried []*domain.Person
-	for _, id := range g.Tried {
-		p, _ := domain.PersonByID(id)
-		tried = append(tried, p)
-	}
-	return map[string]any{"Answers": answers, "Tried": tried, "Msg": msg}
-}
-
-// count returns, for example, "1 miss" or "2 misses".
-func count(n int, one, many string) string {
-	if n == 1 {
-		return "1 " + one
-	}
-	return strconv.Itoa(n) + " " + many
-}
-
-// puzzle reads the puzzle number the page sent. When it is not a number (400) or the puzzle
-// no longer accepts actions ("ended" contents), it writes the reply and returns ok == false.
-func puzzle(w http.ResponseWriter, r *http.Request, now time.Time) (p domain.Puzzle, ok bool) {
+// parsePuzzle reads the puzzle number the page sent. When it is not a number, it replies 400 and returns ok == false.
+func parsePuzzle(w http.ResponseWriter, r *http.Request) (domain.Puzzle, bool) {
 	n, err := strconv.Atoi(r.FormValue("puzzle"))
 	if err != nil {
 		http.Error(w, "bad puzzle", http.StatusBadRequest)
 		return 0, false
 	}
-	p = domain.Puzzle(n)
-	if !domain.Open(p, now) {
-		render(w, "ended.html", nil)
-		return 0, false
-	}
-	return p, true
+	return domain.Puzzle(n), true
 }
 
-// NewHandler returns the game's HTTP routes. now supplies the current time so tests can fix the day.
-func NewHandler(now func() time.Time) http.Handler { return newServer(now) }
+// replyError writes the reply for an error from the app.
+func replyError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, app.ErrUnknownQuestion):
+		http.NotFound(w, r)
+	case errors.Is(err, app.ErrUnknownPerson):
+		http.Error(w, "unknown person", http.StatusBadRequest)
+	case errors.Is(err, app.ErrClosed):
+		render(w, "ended.html", nil)
+	default:
+		log.Printf("%s %s: %v", r.Method, r.URL.Path, err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
+}
 
-func newServer(now func() time.Time) *server {
+// replyPlay renders the game area for board b, or the reply for err.
+func replyPlay(w http.ResponseWriter, r *http.Request, b app.Board, err error, msg string) {
+	if err != nil {
+		replyError(w, r, err)
+		return
+	}
+	render(w, "play.html", newPlayView(b, msg))
+}
+
+// NewHandler returns the game's HTTP routes.
+func NewHandler(svc *app.Service) http.Handler {
 	mux := http.NewServeMux()
-	s := &server{now: now, store: memStore{games: map[gameKey]*domain.Game{}}, mux: mux}
+	s := &server{svc: svc, mux: mux}
 
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		n := domain.Current(now())
-		g, _ := s.store.update(playerID(w, r), n, false, func(*domain.Game) {})
-		render(w, "index.html", map[string]any{"N": n, "Play": playData(n, g, ""), "Data": pageData})
+		b, err := s.svc.Today(r.Context(), playerID(w, r))
+		if err != nil {
+			replyError(w, r, err)
+			return
+		}
+		c, err := s.svc.Choices(r.Context())
+		if err != nil {
+			replyError(w, r, err)
+			return
+		}
+		render(w, "index.html", pageView{N: b.Puzzle, Play: newPlayView(b, ""), Data: newSearchData(c)})
 	})
 
 	mux.HandleFunc("POST /ask/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.Atoi(r.PathValue("id"))
-		if err != nil || id < 0 || id >= len(domain.Questions) {
+		if err != nil {
 			http.NotFound(w, r)
 			return
 		}
-		q := domain.Questions[id]
-		n, ok := puzzle(w, r, now())
+		p, ok := parsePuzzle(w, r)
 		if !ok {
 			return
 		}
-		g, _ := s.store.update(playerID(w, r), n, true, func(g *domain.Game) { g.Ask(q) })
-		render(w, "play.html", playData(n, g, ""))
+		b, err := s.svc.Ask(r.Context(), playerID(w, r), p, domain.Question(id))
+		replyPlay(w, r, b, err, "")
 	})
 
 	mux.HandleFunc("POST /guess", func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.Atoi(r.FormValue("person"))
-		p, ok := domain.PersonByID(domain.PersonID(id))
-		if err != nil || !ok {
+		n, err := strconv.Atoi(r.FormValue("person"))
+		if err != nil {
 			http.Error(w, "unknown person", http.StatusBadRequest)
 			return
 		}
-		n, ok := puzzle(w, r, now())
+		p, ok := parsePuzzle(w, r)
 		if !ok {
 			return
 		}
-		g, _ := s.store.update(playerID(w, r), n, true, func(g *domain.Game) { g.Guess(p.ID, domain.PersonFor(n).ID) })
+		id := domain.PersonID(n)
+		b, err := s.svc.Guess(r.Context(), playerID(w, r), p, id)
 		// A right guess or a finished game shows the result card, which has no message.
-		render(w, "play.html", playData(n, g, p.Name+" is not who I'm thinking of. Try again!"))
+		msg := ""
+		if i := slices.IndexFunc(b.Tried, func(t app.PersonName) bool { return t.ID == id }); i >= 0 && b.Status == domain.Playing {
+			msg = b.Tried[i].Name + " is not who I'm thinking of. Try again!"
+		}
+		replyPlay(w, r, b, err, msg)
 	})
 
 	mux.HandleFunc("POST /giveup", func(w http.ResponseWriter, r *http.Request) {
-		n, ok := puzzle(w, r, now())
+		p, ok := parsePuzzle(w, r)
 		if !ok {
 			return
 		}
-		g, _ := s.store.update(playerID(w, r), n, true, func(g *domain.Game) { g.GiveUp() })
-		render(w, "play.html", playData(n, g, ""))
+		b, err := s.svc.GiveUp(r.Context(), playerID(w, r), p)
+		replyPlay(w, r, b, err, "")
 	})
 
 	return s

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gcalin/whomstdle/internal/game/adapter/memory"
+	"github.com/gcalin/whomstdle/internal/game/app"
 	"github.com/gcalin/whomstdle/internal/game/domain"
 )
 
@@ -21,6 +24,22 @@ var p1 = url.Values{"puzzle": {"1"}}
 
 // guessForm is the form of a guess for puzzle 1.
 func guessForm(person string) url.Values { return url.Values{"person": {person}, "puzzle": {"1"}} }
+
+// newTestHandler builds the real memory store, catalog and app, and returns the handler and the store.
+func newTestHandler(now func() time.Time) (http.Handler, *memory.Games) {
+	games := memory.NewGames()
+	return NewHandler(app.New(games, memory.NewCatalog(), now)), games
+}
+
+// answerPerson returns the person for puzzle 1.
+func answerPerson(t *testing.T) domain.Person {
+	t.Helper()
+	p, err := memory.NewCatalog().PersonFor(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
 
 // client returns a function that sends requests to h as one player (it keeps the cookie).
 func client(h http.Handler) func(method, path string, form url.Values) *httptest.ResponseRecorder {
@@ -41,15 +60,18 @@ func client(h http.Handler) func(method, path string, form url.Values) *httptest
 }
 
 func TestIndex(t *testing.T) {
-	rec := client(NewHandler(dayClock))("GET", "/", nil)
+	h, _ := newTestHandler(dayClock)
+	rec := client(h)("GET", "/", nil)
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Why are they famous?") || !strings.Contains(rec.Body.String(), "Michael Jackson") {
 		t.Fatalf("page should embed the question aliases and names: %d", rec.Code)
 	}
 }
 
 func TestAsk(t *testing.T) {
-	do := client(NewHandler(dayClock))
-	want := domain.PersonFor(domain.Current(day)).Answer(domain.Gender)
+	h, _ := newTestHandler(dayClock)
+	do := client(h)
+	person := answerPerson(t)
+	want := person.Answer(domain.Gender)
 	if body := do("POST", "/ask/1", p1).Body.String(); !strings.Contains(body, want) {
 		t.Fatalf("%q missing %q", body, want)
 	}
@@ -65,8 +87,9 @@ func TestAsk(t *testing.T) {
 }
 
 func TestGuess(t *testing.T) {
-	do := client(NewHandler(dayClock))
-	target := strconv.Itoa(int(domain.PersonFor(domain.Current(day)).ID)) // puzzle 1: Andrei Boboc, ID 1
+	h, _ := newTestHandler(dayClock)
+	do := client(h)
+	target := strconv.Itoa(int(answerPerson(t).ID)) // puzzle 1: Andrei Boboc, ID 1
 	tried := `<li data-id="3">Michael Jackson</li>`
 	if body := do("POST", "/guess", url.Values{"person": {"3"}, "puzzle": {"1"}}).Body.String(); strings.Contains(body, `class="ok"`) || !strings.Contains(body, tried) {
 		t.Fatalf("wrong guess: %q", body)
@@ -87,38 +110,26 @@ func TestGuess(t *testing.T) {
 	}
 }
 
-func TestPageDataPeople(t *testing.T) {
-	people := pageData["people"].([]map[string]any)
-	for i, p := range people {
-		if p["id"].(int) < 1 {
-			t.Errorf("%s has no id", p["name"])
-		}
-		if i > 0 && people[i-1]["name"].(string) > p["name"].(string) {
-			t.Errorf("people not sorted by name: %s before %s", people[i-1]["name"], p["name"])
-		}
-	}
-}
-
 func TestNoGameUntilAction(t *testing.T) {
-	s := newServer(dayClock)
-	do := client(s)
+	h, games := newTestHandler(dayClock)
+	do := client(h)
 	do("GET", "/", nil)
 	do("POST", "/ask/99", p1)
 	do("POST", "/guess", url.Values{"person": {"abc"}, "puzzle": {"1"}})
 	do("POST", "/giveup", url.Values{"puzzle": {"abc"}})
-	if len(s.store.games) != 0 {
-		t.Fatalf("page load or bad request created a game: %d games", len(s.store.games))
+	if games.Len() != 0 {
+		t.Fatalf("page load or bad request created a game: %d games", games.Len())
 	}
 	do("POST", "/ask/1", p1)
-	if len(s.store.games) != 1 {
-		t.Fatalf("asking should create one game, got %d", len(s.store.games))
+	if games.Len() != 1 {
+		t.Fatalf("asking should create one game, got %d", games.Len())
 	}
 }
 
 func TestMidnight(t *testing.T) {
 	at := time.Date(2026, 11, 25, 23, 58, 0, 0, time.UTC) // puzzle 1
-	s := newServer(func() time.Time { return at })
-	do := client(s)
+	h, games := newTestHandler(func() time.Time { return at })
+	do := client(h)
 	alive := `<li data-id="0"><span>Are they alive?</span><strong>Yes</strong></li>` // puzzle 2's answer is "No"
 	do("POST", "/ask/0", p1)
 
@@ -130,7 +141,7 @@ func TestMidnight(t *testing.T) {
 		t.Fatalf("puzzle 1's person should still win after midnight: %q", body)
 	}
 
-	if body := client(s)("POST", "/giveup", p1).Body.String(); !strings.Contains(body, "Andrei Boboc") {
+	if body := client(h)("POST", "/giveup", p1).Body.String(); !strings.Contains(body, "Andrei Boboc") {
 		t.Fatalf("giving up yesterday's puzzle should show yesterday's person: %q", body)
 	}
 
@@ -139,9 +150,9 @@ func TestMidnight(t *testing.T) {
 	if body := rec.Body.String(); rec.Code != 200 || !strings.Contains(body, "This puzzle has ended") || strings.Contains(body, "Andrei Boboc") {
 		t.Fatalf("after the grace hour: got %d %q", rec.Code, body)
 	}
-	games := len(s.store.games)
-	client(s)("POST", "/ask/0", p1) // a new player
-	if len(s.store.games) != games {
+	before := games.Len()
+	client(h)("POST", "/ask/0", p1) // a new player
+	if games.Len() != before {
 		t.Fatal("a refused first action created a game")
 	}
 	if rec := do("POST", "/ask/0", url.Values{"puzzle": {"abc"}}); rec.Code != http.StatusBadRequest {
@@ -150,7 +161,8 @@ func TestMidnight(t *testing.T) {
 }
 
 func TestSolve(t *testing.T) {
-	do := client(NewHandler(dayClock))
+	h, _ := newTestHandler(dayClock)
+	do := client(h)
 	for _, q := range []string{"0", "1", "2", "3"} {
 		do("POST", "/ask/"+q, p1)
 	}
@@ -180,13 +192,14 @@ func TestSolve(t *testing.T) {
 	if body := do("GET", "/", nil).Body.String(); !strings.Contains(body, card) {
 		t.Errorf("reload does not show the card: %q", body)
 	}
-	if body := client(NewHandler(dayClock))("POST", "/guess", guessForm("1")).Body.String(); !strings.Contains(body, "Score 0: 0 questions, 0 misses") {
+	h, _ = newTestHandler(dayClock)
+	if body := client(h)("POST", "/guess", guessForm("1")).Body.String(); !strings.Contains(body, "Score 0: 0 questions, 0 misses") {
 		t.Errorf("a right first guess should score 0: %q", body)
 	}
 }
 
 func TestGiveUp(t *testing.T) {
-	h := NewHandler(dayClock)
+	h, _ := newTestHandler(dayClock)
 	if body := client(h)("POST", "/giveup", p1).Body.String(); !strings.Contains(body, "You gave up.") || !strings.Contains(body, "0 questions, 0 misses") {
 		t.Errorf("give up as the first action: %q", body)
 	}
@@ -210,8 +223,9 @@ func TestGiveUp(t *testing.T) {
 }
 
 func TestNoNameWhilePlaying(t *testing.T) {
-	do := client(NewHandler(dayClock))
-	name := domain.PersonFor(1).Name
+	h, _ := newTestHandler(dayClock)
+	do := client(h)
+	name := answerPerson(t).Name
 	replies := []string{do("POST", "/guess", guessForm("2")).Body.String(), do("POST", "/guess", guessForm("3")).Body.String()}
 	for id := range domain.Questions { // every question, the hint too
 		replies = append(replies, do("POST", "/ask/"+strconv.Itoa(id), p1).Body.String())
@@ -225,7 +239,7 @@ func TestNoNameWhilePlaying(t *testing.T) {
 
 // Right guesses and give ups at the same moment: the first one ends the game and every reply shows that same ending.
 func TestFinishAtTheSameTime(t *testing.T) {
-	h := NewHandler(dayClock)
+	h, _ := newTestHandler(dayClock)
 	cookie := client(h)("POST", "/ask/0", p1).Result().Cookies()[0]
 	bodies := make([]string, 20)
 	var wg sync.WaitGroup

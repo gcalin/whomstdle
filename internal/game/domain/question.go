@@ -50,3 +50,6 @@ var aliases = map[Question][]string{
 	Awards:      {"Have they won any awards?", "Are they award-winning?"},
 	Hint:        {"Can I get a hint?", "Give me a clue", "Tell me something about them", "I'm stuck", "Help"},
 }
+
+// Valid reports whether q is one of the 10 questions.
+func (q Question) Valid() bool { return q >= 0 && int(q) < len(Questions) }

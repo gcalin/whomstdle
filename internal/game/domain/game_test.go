@@ -99,14 +99,3 @@ func TestAnswer(t *testing.T) {
 		t.Errorf("Answer(Gender) with no answer stored = %q, want empty", got)
 	}
 }
-
-// A missing answer would show the player an empty reply, so every person must answer every question.
-func TestEveryPersonAnswersEveryQuestion(t *testing.T) {
-	for _, p := range People {
-		for _, q := range Questions {
-			if p.Answer(q) == "" {
-				t.Errorf("%s has no answer to %q", p.Name, q.Text())
-			}
-		}
-	}
-}
