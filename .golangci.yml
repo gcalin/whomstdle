@@ -1,0 +1,7 @@
+# golangci-lint settings. Uses the default linters (errcheck, govet, ineffassign, staticcheck, unused).
+version: "2"
+
+issues:
+  # Show every problem at once, instead of the first few of each kind.
+  max-issues-per-linter: 0
+  max-same-issues: 0

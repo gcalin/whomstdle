@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"embed"
 	"html/template"
+	"log"
 	"net/http"
 	"slices"
 	"strconv"
@@ -18,6 +19,13 @@ import (
 var templateFS embed.FS
 
 var tmpl = template.Must(template.ParseFS(templateFS, "templates/*.html"))
+
+// render writes template name to w. A template error is logged, because part of the page may already be sent.
+func render(w http.ResponseWriter, name string, data any) {
+	if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
+		log.Printf("render %s: %v", name, err)
+	}
+}
 
 // pageData is sent once inside the page; the browser searches it as the player types.
 var pageData = func() map[string]any {
@@ -100,7 +108,7 @@ func puzzle(w http.ResponseWriter, r *http.Request, now time.Time) (p int, ok bo
 		return 0, false
 	}
 	if !game.Open(p, now) {
-		tmpl.ExecuteTemplate(w, "ended.html", nil)
+		render(w, "ended.html", nil)
 		return 0, false
 	}
 	return p, true
@@ -116,7 +124,7 @@ func newServer(now func() time.Time) *server {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		n := game.Current(now())
 		g, _ := s.store.update(playerID(w, r), n, false, func(*game.Game) {})
-		tmpl.ExecuteTemplate(w, "index.html", map[string]any{"N": n, "Play": playData(n, g, ""), "Data": pageData})
+		render(w, "index.html", map[string]any{"N": n, "Play": playData(n, g, ""), "Data": pageData})
 	})
 
 	mux.HandleFunc("POST /ask/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +143,7 @@ func newServer(now func() time.Time) *server {
 				g.Asked = append(g.Asked, q)
 			}
 		})
-		tmpl.ExecuteTemplate(w, "play.html", playData(n, g, ""))
+		render(w, "play.html", playData(n, g, ""))
 	})
 
 	mux.HandleFunc("POST /guess", func(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +168,7 @@ func newServer(now func() time.Time) *server {
 			}
 		})
 		// A right guess or a finished game shows the result card, which has no message.
-		tmpl.ExecuteTemplate(w, "play.html", playData(n, g, p.Name+" is not who I'm thinking of. Try again!"))
+		render(w, "play.html", playData(n, g, p.Name+" is not who I'm thinking of. Try again!"))
 	})
 
 	mux.HandleFunc("POST /giveup", func(w http.ResponseWriter, r *http.Request) {
@@ -173,7 +181,7 @@ func newServer(now func() time.Time) *server {
 				g.Status = game.GaveUp
 			}
 		})
-		tmpl.ExecuteTemplate(w, "play.html", playData(n, g, ""))
+		render(w, "play.html", playData(n, g, ""))
 	})
 
 	return s

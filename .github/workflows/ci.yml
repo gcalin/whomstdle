@@ -1,0 +1,22 @@
+# Runs `make check` on GitHub for every push to main and every pull request.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      # Only installs golangci-lint; `make check` runs it. Keep the version the same as on your Mac.
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.15.0
+          install-only: true
+      - run: make check
