@@ -14,9 +14,10 @@ import (
 
 var day = time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
 
-// client returns a function that sends requests as one player (it keeps the cookie).
-func client() func(method, path string, form url.Values) *httptest.ResponseRecorder {
-	h := NewHandler(func() time.Time { return day })
+func dayClock() time.Time { return day }
+
+// client returns a function that sends requests to h as one player (it keeps the cookie).
+func client(h http.Handler) func(method, path string, form url.Values) *httptest.ResponseRecorder {
 	var cookies []*http.Cookie
 	return func(method, path string, form url.Values) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, path, strings.NewReader(form.Encode()))
@@ -34,14 +35,14 @@ func client() func(method, path string, form url.Values) *httptest.ResponseRecor
 }
 
 func TestIndex(t *testing.T) {
-	rec := client()("GET", "/", nil)
+	rec := client(NewHandler(dayClock))("GET", "/", nil)
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Why are they famous?") || !strings.Contains(rec.Body.String(), "Michael Jackson") {
 		t.Fatalf("page should embed the question aliases and names: %d", rec.Code)
 	}
 }
 
 func TestAsk(t *testing.T) {
-	do := client()
+	do := client(NewHandler(dayClock))
 	want := game.PersonFor(game.Current(day)).Answer(game.Gender)
 	if body := do("POST", "/ask/1", nil).Body.String(); !strings.Contains(body, want) {
 		t.Fatalf("%q missing %q", body, want)
@@ -58,7 +59,7 @@ func TestAsk(t *testing.T) {
 }
 
 func TestGuess(t *testing.T) {
-	do := client()
+	do := client(NewHandler(dayClock))
 	target := strconv.Itoa(game.PersonFor(game.Current(day)).ID) // puzzle 1: Andrei Boboc, ID 1
 	if body := do("POST", "/guess", url.Values{"person": {target}}).Body.String(); !strings.Contains(body, "That's right") {
 		t.Fatalf("correct guess: %q", body)
@@ -85,5 +86,20 @@ func TestPageDataPeople(t *testing.T) {
 		if i > 0 && people[i-1]["name"].(string) > p["name"].(string) {
 			t.Errorf("people not sorted by name: %s before %s", people[i-1]["name"], p["name"])
 		}
+	}
+}
+
+func TestNoGameUntilAction(t *testing.T) {
+	s := newServer(dayClock)
+	do := client(s)
+	do("GET", "/", nil)
+	do("POST", "/ask/99", nil)
+	do("POST", "/guess", url.Values{"person": {"abc"}})
+	if len(s.store.games) != 0 {
+		t.Fatalf("page load or bad request created a game: %d games", len(s.store.games))
+	}
+	do("POST", "/ask/1", nil)
+	if len(s.store.games) != 1 {
+		t.Fatalf("asking should create one game, got %d", len(s.store.games))
 	}
 }

@@ -4,13 +4,11 @@ package web
 import (
 	"crypto/rand"
 	"embed"
-	"encoding/hex"
 	"html/template"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gcalin/whomstdle/internal/game"
@@ -36,43 +34,30 @@ var pageData = func() map[string]any {
 	return map[string]any{"questions": qs, "people": people}
 }()
 
-// state is one player's progress for one day.
-type state struct {
-	Asked []game.Question
-	Tried []int // person IDs of wrong guesses
-}
-
 type server struct {
 	now   func() time.Time
-	mu    sync.Mutex // guards games: handlers run concurrently
-	games map[string]*state
+	store memStore
+	mux   *http.ServeMux
 }
 
-// play runs f on the caller's game for today. Handlers must not write the response inside f.
-func (s *server) play(w http.ResponseWriter, r *http.Request, f func(*state)) {
-	c, err := r.Cookie("player")
-	if err != nil {
-		b := make([]byte, 16)
-		rand.Read(b)
-		c = &http.Cookie{Name: "player", Value: hex.EncodeToString(b), Path: "/", MaxAge: 365 * 24 * 3600, HttpOnly: true, SameSite: http.SameSiteLaxMode}
-		http.SetCookie(w, c)
-	}
-	key := c.Value + s.now().UTC().Format("2006-01-02")
+func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	st := s.games[key]
-	if st == nil {
-		st = &state{}
-		s.games[key] = st
+// playerID returns the player cookie, and creates it when it is missing.
+func playerID(w http.ResponseWriter, r *http.Request) string {
+	if c, err := r.Cookie("player"); err == nil {
+		return c.Value
 	}
-	f(st)
+	id := rand.Text()
+	http.SetCookie(w, &http.Cookie{Name: "player", Value: id, Path: "/", MaxAge: 365 * 24 * 3600, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+	return id
 }
 
 // NewHandler returns the game's HTTP routes. now supplies the current time so tests can fix the day.
-func NewHandler(now func() time.Time) http.Handler {
-	s := &server{now: now, games: map[string]*state{}}
+func NewHandler(now func() time.Time) http.Handler { return newServer(now) }
+
+func newServer(now func() time.Time) *server {
 	mux := http.NewServeMux()
+	s := &server{now: now, store: memStore{games: map[gameKey]*game.Game{}}, mux: mux}
 
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		d := struct {
@@ -80,15 +65,15 @@ func NewHandler(now func() time.Time) http.Handler {
 			Tried   []*game.Person
 			Data    any
 		}{Data: pageData}
-		s.play(w, r, func(st *state) {
-			for _, q := range slices.Backward(st.Asked) {
-				d.Answers = append(d.Answers, map[string]any{"ID": int(q), "Question": q.Text(), "Answer": game.PersonFor(game.Current(now())).Answer(q)})
-			}
-			for _, id := range st.Tried {
-				p, _ := game.PersonByID(id)
-				d.Tried = append(d.Tried, p)
-			}
-		})
+		n := game.Current(now())
+		g, _ := s.store.update(playerID(w, r), n, false, func(*game.Game) {})
+		for _, q := range slices.Backward(g.Asked) {
+			d.Answers = append(d.Answers, map[string]any{"ID": int(q), "Question": q.Text(), "Answer": game.PersonFor(n).Answer(q)})
+		}
+		for _, id := range g.Tried {
+			p, _ := game.PersonByID(id)
+			d.Tried = append(d.Tried, p)
+		}
 		tmpl.ExecuteTemplate(w, "index.html", d)
 	})
 
@@ -99,10 +84,11 @@ func NewHandler(now func() time.Time) http.Handler {
 			return
 		}
 		q := game.Questions[id]
+		n := game.Current(now())
 		fresh := false
-		s.play(w, r, func(st *state) {
-			if fresh = !slices.Contains(st.Asked, q); fresh {
-				st.Asked = append(st.Asked, q)
+		s.store.update(playerID(w, r), n, true, func(g *game.Game) {
+			if fresh = !slices.Contains(g.Asked, q); fresh {
+				g.Asked = append(g.Asked, q)
 			}
 		})
 		if !fresh {
@@ -112,7 +98,7 @@ func NewHandler(now func() time.Time) http.Handler {
 		tmpl.ExecuteTemplate(w, "answer.html", map[string]any{
 			"ID":       id,
 			"Question": q.Text(),
-			"Answer":   game.PersonFor(game.Current(now())).Answer(q),
+			"Answer":   game.PersonFor(n).Answer(q),
 		})
 	})
 
@@ -123,18 +109,17 @@ func NewHandler(now func() time.Time) http.Handler {
 			http.Error(w, "unknown person", http.StatusBadRequest)
 			return
 		}
-		correct := p.ID == game.PersonFor(game.Current(now())).ID
+		n := game.Current(now())
+		correct := p.ID == game.PersonFor(n).ID
 		wrong := false
-		if !correct {
-			s.play(w, r, func(st *state) {
-				if !slices.Contains(st.Tried, p.ID) {
-					st.Tried = append(st.Tried, p.ID)
-					wrong = true
-				}
-			})
-		}
+		s.store.update(playerID(w, r), n, true, func(g *game.Game) {
+			if !correct && !slices.Contains(g.Tried, p.ID) {
+				g.Tried = append(g.Tried, p.ID)
+				wrong = true
+			}
+		})
 		tmpl.ExecuteTemplate(w, "guess.html", map[string]any{"Person": p, "Correct": correct, "Wrong": wrong})
 	})
 
-	return mux
+	return s
 }
