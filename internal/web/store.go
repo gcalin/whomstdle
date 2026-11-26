@@ -14,14 +14,14 @@ type memStore struct {
 }
 
 type gameKey struct {
-	player string // the player cookie
-	puzzle int
+	player game.PlayerID
+	puzzle game.Puzzle
 }
 
 // update runs f on the player's game for the puzzle while holding the lock.
 // If there is no game yet: create it first when create is true, otherwise return ok == false.
 // It returns a copy of the game after f ran. f must not write the response.
-func (s *memStore) update(player string, puzzle int, create bool, f func(*game.Game)) (g game.Game, ok bool) {
+func (s *memStore) update(player game.PlayerID, puzzle game.Puzzle, create bool, f func(*game.Game)) (g game.Game, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	k := gameKey{player, puzzle}

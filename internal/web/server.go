@@ -37,7 +37,7 @@ var pageData = func() map[string]any {
 	sorted := slices.Clone(game.People)
 	slices.SortFunc(sorted, func(a, b game.Person) int { return strings.Compare(a.Name, b.Name) })
 	for _, p := range sorted {
-		people = append(people, map[string]any{"id": p.ID, "name": p.Name, "aliases": p.Aliases})
+		people = append(people, map[string]any{"id": int(p.ID), "name": p.Name, "aliases": p.Aliases})
 	}
 	return map[string]any{"questions": qs, "people": people}
 }()
@@ -51,18 +51,18 @@ type server struct {
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
 
 // playerID returns the player cookie, and creates it when it is missing.
-func playerID(w http.ResponseWriter, r *http.Request) string {
+func playerID(w http.ResponseWriter, r *http.Request) game.PlayerID {
 	if c, err := r.Cookie("player"); err == nil {
-		return c.Value
+		return game.PlayerID(c.Value)
 	}
 	id := rand.Text()
 	http.SetCookie(w, &http.Cookie{Name: "player", Value: id, Path: "/", MaxAge: 365 * 24 * 3600, HttpOnly: true, SameSite: http.SameSiteLaxMode})
-	return id
+	return game.PlayerID(id)
 }
 
 // playData is what play.html draws: the whole game area of game g for puzzle n.
 // msg is shown only while the game is being played.
-func playData(n int, g game.Game, msg string) map[string]any {
+func playData(n game.Puzzle, g game.Game, msg string) map[string]any {
 	person := game.PersonFor(n)
 	answer := func(q game.Question) map[string]any {
 		return map[string]any{"ID": int(q), "Question": q.Text(), "Answer": person.Answer(q)}
@@ -101,12 +101,13 @@ func count(n int, one, many string) string {
 
 // puzzle reads the puzzle number the page sent. When it is not a number (400) or the puzzle
 // no longer accepts actions ("ended" contents), it writes the reply and returns ok == false.
-func puzzle(w http.ResponseWriter, r *http.Request, now time.Time) (p int, ok bool) {
-	p, err := strconv.Atoi(r.FormValue("puzzle"))
+func puzzle(w http.ResponseWriter, r *http.Request, now time.Time) (p game.Puzzle, ok bool) {
+	n, err := strconv.Atoi(r.FormValue("puzzle"))
 	if err != nil {
 		http.Error(w, "bad puzzle", http.StatusBadRequest)
 		return 0, false
 	}
+	p = game.Puzzle(n)
 	if !game.Open(p, now) {
 		render(w, "ended.html", nil)
 		return 0, false
@@ -148,7 +149,7 @@ func newServer(now func() time.Time) *server {
 
 	mux.HandleFunc("POST /guess", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.Atoi(r.FormValue("person"))
-		p, ok := game.PersonByID(id)
+		p, ok := game.PersonByID(game.PersonID(id))
 		if err != nil || !ok {
 			http.Error(w, "unknown person", http.StatusBadRequest)
 			return

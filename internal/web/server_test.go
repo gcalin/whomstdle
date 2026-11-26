@@ -66,7 +66,7 @@ func TestAsk(t *testing.T) {
 
 func TestGuess(t *testing.T) {
 	do := client(NewHandler(dayClock))
-	target := strconv.Itoa(game.PersonFor(game.Current(day)).ID) // puzzle 1: Andrei Boboc, ID 1
+	target := strconv.Itoa(int(game.PersonFor(game.Current(day)).ID)) // puzzle 1: Andrei Boboc, ID 1
 	tried := `<li data-id="3">Michael Jackson</li>`
 	if body := do("POST", "/guess", url.Values{"person": {"3"}, "puzzle": {"1"}}).Body.String(); strings.Contains(body, `class="ok"`) || !strings.Contains(body, tried) {
 		t.Fatalf("wrong guess: %q", body)

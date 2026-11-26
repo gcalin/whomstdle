@@ -10,9 +10,9 @@ func TestScore(t *testing.T) {
 	}{
 		{"new game", Game{}, 0},
 		{"questions only", Game{Asked: []Question{Alive, Gender}}, 2},
-		{"wrong guesses only", Game{Tried: []int{2, 3}}, 2},
-		{"questions and wrong guesses", Game{Asked: []Question{Alive}, Tried: []int{2, 3}}, 3},
-		{"solved game counts the same", Game{Asked: []Question{Alive}, Tried: []int{2}, Status: Solved}, 2},
+		{"wrong guesses only", Game{Tried: []PersonID{2, 3}}, 2},
+		{"questions and wrong guesses", Game{Asked: []Question{Alive}, Tried: []PersonID{2, 3}}, 3},
+		{"solved game counts the same", Game{Asked: []Question{Alive}, Tried: []PersonID{2}, Status: Solved}, 2},
 	} {
 		if got := c.g.Score(); got != c.want {
 			t.Errorf("%s: Score() = %d, want %d", c.name, got, c.want)

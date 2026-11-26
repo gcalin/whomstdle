@@ -1,7 +1,10 @@
 package game
 
+// PersonID is a person's fixed ID. Never change or reuse one.
+type PersonID int
+
 type Person struct {
-	ID      int
+	ID      PersonID
 	Name    string
 	Aliases []string
 	Answers map[Question]string
@@ -44,7 +47,7 @@ var People = []Person{
 }
 
 // PersonByID returns the person with the given ID.
-func PersonByID(id int) (*Person, bool) {
+func PersonByID(id PersonID) (*Person, bool) {
 	for i := range People {
 		if People[i].ID == id {
 			return &People[i], true

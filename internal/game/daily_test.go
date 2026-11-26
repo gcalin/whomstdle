@@ -6,7 +6,7 @@ import (
 )
 
 func TestIDs(t *testing.T) {
-	seen := map[int]bool{}
+	seen := map[PersonID]bool{}
 	for _, p := range People {
 		if p.ID < 1 || seen[p.ID] {
 			t.Errorf("%s: ID %d is below 1 or used twice", p.Name, p.ID)
@@ -28,7 +28,7 @@ func TestSchedule(t *testing.T) {
 		}
 	}
 	// Uses the real clock on purpose: fails a week before the schedule runs out.
-	if left := len(Schedule) - Current(time.Now()); left < 7 {
+	if left := len(Schedule) - int(Current(time.Now())); left < 7 {
 		t.Errorf("only %d puzzles left: the schedule runs out after %s, add entries to Schedule",
 			left, launch.AddDate(0, 0, len(Schedule)-1).Format("2006-01-02"))
 	}
@@ -37,7 +37,7 @@ func TestSchedule(t *testing.T) {
 func TestCurrent(t *testing.T) {
 	for _, c := range []struct {
 		at   time.Time
-		want int
+		want Puzzle
 	}{
 		{launch.Add(-time.Minute), 1},
 		{launch, 1},
@@ -63,7 +63,7 @@ func TestPersonForIgnoresOrder(t *testing.T) {
 func TestOpen(t *testing.T) {
 	day2 := Start(2)
 	for _, c := range []struct {
-		p    int
+		p    Puzzle
 		at   time.Time
 		want bool
 	}{
