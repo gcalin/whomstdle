@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gcalin/whomstdle/internal/game"
+	"github.com/gcalin/whomstdle/internal/game/domain"
 )
 
 var day = time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
@@ -49,7 +49,7 @@ func TestIndex(t *testing.T) {
 
 func TestAsk(t *testing.T) {
 	do := client(NewHandler(dayClock))
-	want := game.PersonFor(game.Current(day)).Answer(game.Gender)
+	want := domain.PersonFor(domain.Current(day)).Answer(domain.Gender)
 	if body := do("POST", "/ask/1", p1).Body.String(); !strings.Contains(body, want) {
 		t.Fatalf("%q missing %q", body, want)
 	}
@@ -66,7 +66,7 @@ func TestAsk(t *testing.T) {
 
 func TestGuess(t *testing.T) {
 	do := client(NewHandler(dayClock))
-	target := strconv.Itoa(int(game.PersonFor(game.Current(day)).ID)) // puzzle 1: Andrei Boboc, ID 1
+	target := strconv.Itoa(int(domain.PersonFor(domain.Current(day)).ID)) // puzzle 1: Andrei Boboc, ID 1
 	tried := `<li data-id="3">Michael Jackson</li>`
 	if body := do("POST", "/guess", url.Values{"person": {"3"}, "puzzle": {"1"}}).Body.String(); strings.Contains(body, `class="ok"`) || !strings.Contains(body, tried) {
 		t.Fatalf("wrong guess: %q", body)
@@ -161,8 +161,8 @@ func TestSolve(t *testing.T) {
 			t.Errorf("card is missing %q", want)
 		}
 	}
-	if n := strings.Count(card, "<li data-id="); n != len(game.Questions) {
-		t.Errorf("card shows %d answers, want all %d", n, len(game.Questions))
+	if n := strings.Count(card, "<li data-id="); n != len(domain.Questions) {
+		t.Errorf("card shows %d answers, want all %d", n, len(domain.Questions))
 	}
 	for _, gone := range []string{`id="q"`, `id="g"`, "/giveup"} {
 		if strings.Contains(card, gone) {
@@ -211,9 +211,9 @@ func TestGiveUp(t *testing.T) {
 
 func TestNoNameWhilePlaying(t *testing.T) {
 	do := client(NewHandler(dayClock))
-	name := game.PersonFor(1).Name
+	name := domain.PersonFor(1).Name
 	replies := []string{do("POST", "/guess", guessForm("2")).Body.String(), do("POST", "/guess", guessForm("3")).Body.String()}
-	for id := range game.Questions { // every question, the hint too
+	for id := range domain.Questions { // every question, the hint too
 		replies = append(replies, do("POST", "/ask/"+strconv.Itoa(id), p1).Body.String())
 	}
 	for _, body := range replies {

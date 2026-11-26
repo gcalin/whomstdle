@@ -1,4 +1,4 @@
-package game
+package domain
 
 // PlayerID is the random ID in the player's cookie.
 type PlayerID string

@@ -1,4 +1,4 @@
-// Command web serves the guessing game in the browser.
+// Command game serves the guessing game in the browser.
 package main
 
 import (
@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gcalin/whomstdle/internal/web"
+	"github.com/gcalin/whomstdle/internal/game/adapter/web"
 )
 
 func main() {

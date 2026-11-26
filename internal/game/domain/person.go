@@ -1,4 +1,4 @@
-package game
+package domain
 
 // PersonID is a person's fixed ID. Never change or reuse one.
 type PersonID int
