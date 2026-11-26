@@ -18,6 +18,18 @@ func Current(now time.Time) int {
 	return int(now.Sub(launch)/(24*time.Hour)) + 1
 }
 
+// Grace is how long after midnight yesterday's puzzle still accepts actions.
+const Grace = time.Hour
+
+// Start returns the time puzzle n begins.
+func Start(n int) time.Time { return launch.Add(time.Duration(n-1) * 24 * time.Hour) }
+
+// Open reports whether puzzle p accepts actions at time now: today's puzzle, or yesterday's during the grace hour.
+func Open(p int, now time.Time) bool {
+	c := Current(now)
+	return p == c || (p == c-1 && p >= 1 && now.Before(Start(c).Add(Grace)))
+}
+
 // PersonFor returns the person for puzzle n.
 func PersonFor(n int) *Person {
 	id := Schedule[(n-1)%len(Schedule)] // wraps if the schedule runs out; a test warns a week before

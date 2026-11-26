@@ -41,8 +41,8 @@
   </style>
 </head>
 <body>
-  <header><div><h1>whomst<span>dle</span></h1></div></header>
-  <main>
+  <header><div><h1>whomst<span>dle</span> #{{.N}}</h1></div></header>
+  <main hx-vals='{"puzzle": {{.N}}}'>
     <p class="hero">Who's the mystery person?</p>
     <p class="sub">Ask questions, collect clues, then make your guess.</p>
 
@@ -107,7 +107,7 @@
     // After a reply is drawn, put the cursor back in the box that was used.
     let used = null;
     document.addEventListener('htmx:beforeRequest', e => { used = e.target.closest('.search')?.querySelector('input').id; });
-    document.addEventListener('htmx:afterSwap', () => { if (used) document.getElementById(used).focus(); });
+    document.addEventListener('htmx:afterSwap', () => { if (used) document.getElementById(used)?.focus(); });
   </script>
 </body>
 </html>

@@ -59,3 +59,22 @@ func TestPersonForIgnoresOrder(t *testing.T) {
 		t.Errorf("adding a person changed puzzle 1 from %s to %s", before, got)
 	}
 }
+
+func TestOpen(t *testing.T) {
+	day2 := Start(2)
+	for _, c := range []struct {
+		p    int
+		at   time.Time
+		want bool
+	}{
+		{2, day2, true},                       // today
+		{1, day2.Add(59 * time.Minute), true}, // yesterday, in the grace hour
+		{1, day2.Add(61 * time.Minute), false},
+		{3, day2, false}, // tomorrow
+		{0, launch, false},
+	} {
+		if got := Open(c.p, c.at); got != c.want {
+			t.Errorf("Open(%d, %v) = %v, want %v", c.p, c.at, got, c.want)
+		}
+	}
+}

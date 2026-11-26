@@ -68,6 +68,21 @@ func playData(n int, g game.Game, msg string, ok bool) map[string]any {
 	return map[string]any{"Answers": answers, "Tried": tried, "Msg": msg, "OK": ok}
 }
 
+// puzzle reads the puzzle number the page sent. When it is not a number (400) or the puzzle
+// no longer accepts actions ("ended" contents), it writes the reply and returns ok == false.
+func puzzle(w http.ResponseWriter, r *http.Request, now time.Time) (p int, ok bool) {
+	p, err := strconv.Atoi(r.FormValue("puzzle"))
+	if err != nil {
+		http.Error(w, "bad puzzle", http.StatusBadRequest)
+		return 0, false
+	}
+	if !game.Open(p, now) {
+		tmpl.ExecuteTemplate(w, "ended.html", nil)
+		return 0, false
+	}
+	return p, true
+}
+
 // NewHandler returns the game's HTTP routes. now supplies the current time so tests can fix the day.
 func NewHandler(now func() time.Time) http.Handler { return newServer(now) }
 
@@ -78,7 +93,7 @@ func newServer(now func() time.Time) *server {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		n := game.Current(now())
 		g, _ := s.store.update(playerID(w, r), n, false, func(*game.Game) {})
-		tmpl.ExecuteTemplate(w, "index.html", map[string]any{"Play": playData(n, g, "", false), "Data": pageData})
+		tmpl.ExecuteTemplate(w, "index.html", map[string]any{"N": n, "Play": playData(n, g, "", false), "Data": pageData})
 	})
 
 	mux.HandleFunc("POST /ask/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +103,10 @@ func newServer(now func() time.Time) *server {
 			return
 		}
 		q := game.Questions[id]
-		n := game.Current(now())
+		n, ok := puzzle(w, r, now())
+		if !ok {
+			return
+		}
 		g, _ := s.store.update(playerID(w, r), n, true, func(g *game.Game) {
 			if !slices.Contains(g.Asked, q) {
 				g.Asked = append(g.Asked, q)
@@ -104,11 +122,14 @@ func newServer(now func() time.Time) *server {
 			http.Error(w, "unknown person", http.StatusBadRequest)
 			return
 		}
-		n := game.Current(now())
+		n, ok := puzzle(w, r, now())
+		if !ok {
+			return
+		}
 		correct := p.ID == game.PersonFor(n).ID
 		msg := p.Name + " is not who I'm thinking of. Try again!"
 		if correct {
-			msg = "🎉 That's right! " + p.Name + " is today's person!"
+			msg = "🎉 That's right! It's " + p.Name + "!"
 		}
 		g, _ := s.store.update(playerID(w, r), n, true, func(g *game.Game) {
 			if !correct && !slices.Contains(g.Tried, p.ID) {
