@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,8 +27,11 @@ var pageData = func() map[string]any {
 	for _, q := range game.Questions {
 		qs = append(qs, map[string]any{"id": int(q), "text": q.Text(), "aliases": q.Aliases()})
 	}
-	for _, p := range game.People {
-		people = append(people, map[string]any{"name": p.Name, "aliases": p.Aliases})
+	// Sorted by name: the order in game.People must not hint at the answer.
+	sorted := slices.Clone(game.People)
+	slices.SortFunc(sorted, func(a, b game.Person) int { return strings.Compare(a.Name, b.Name) })
+	for _, p := range sorted {
+		people = append(people, map[string]any{"id": p.ID, "name": p.Name, "aliases": p.Aliases})
 	}
 	return map[string]any{"questions": qs, "people": people}
 }()
@@ -78,7 +82,7 @@ func NewHandler(now func() time.Time) http.Handler {
 		}{Data: pageData}
 		s.play(w, r, func(st *state) {
 			for _, q := range slices.Backward(st.Asked) {
-				d.Answers = append(d.Answers, map[string]any{"ID": int(q), "Question": q.Text(), "Answer": game.TodaysPerson(now()).Answer(q)})
+				d.Answers = append(d.Answers, map[string]any{"ID": int(q), "Question": q.Text(), "Answer": game.PersonFor(game.Current(now())).Answer(q)})
 			}
 			d.Tried = slices.Clone(st.Tried)
 		})
@@ -105,13 +109,13 @@ func NewHandler(now func() time.Time) http.Handler {
 		tmpl.ExecuteTemplate(w, "answer.html", map[string]any{
 			"ID":       id,
 			"Question": q.Text(),
-			"Answer":   game.TodaysPerson(now()).Answer(q),
+			"Answer":   game.PersonFor(game.Current(now())).Answer(q),
 		})
 	})
 
 	mux.HandleFunc("POST /guess", func(w http.ResponseWriter, r *http.Request) {
 		guess := r.FormValue("guess")
-		target := game.TodaysPerson(now())
+		target := game.PersonFor(game.Current(now()))
 		p, known := game.FindPerson(guess)
 		correct := known && p == target
 		wrong := ""

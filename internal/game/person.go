@@ -1,6 +1,7 @@
 package game
 
 type Person struct {
+	ID      int
 	Name    string
 	Aliases []string
 	Answers map[Question]string
@@ -12,6 +13,7 @@ func (p *Person) Answer(q Question) string {
 
 var People = []Person{
 	{
+		ID:      1,
 		Name:    "Andrei Boboc",
 		Aliases: []string{"Boboc"},
 		Answers: map[Question]string{
@@ -21,6 +23,7 @@ var People = []Person{
 		},
 	},
 	{
+		ID:      2,
 		Name:    "Nihal",
 		Aliases: []string{"Mihai Daniel Filologie", "Mihai Iosub"},
 		Answers: map[Question]string{
@@ -30,6 +33,7 @@ var People = []Person{
 		},
 	},
 	{
+		ID:   3,
 		Name: "Michael Jackson",
 		Answers: map[Question]string{
 			Alive: "No", Gender: "Man", Field: "Music", Continent: "North America",
@@ -37,6 +41,16 @@ var People = []Person{
 			PublicRole: "Yes", Awards: "Yes", Hint: "The king of pop",
 		},
 	},
+}
+
+// PersonByID returns the person with the given ID.
+func PersonByID(id int) (*Person, bool) {
+	for i := range People {
+		if People[i].ID == id {
+			return &People[i], true
+		}
+	}
+	return nil, false
 }
 
 // byName indexes People by canonical name and every alias, so a player's

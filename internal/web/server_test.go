@@ -41,7 +41,7 @@ func TestIndex(t *testing.T) {
 
 func TestAsk(t *testing.T) {
 	do := client()
-	want := game.TodaysPerson(day).Answer(game.Gender)
+	want := game.PersonFor(game.Current(day)).Answer(game.Gender)
 	if body := do("POST", "/ask/1", nil).Body.String(); !strings.Contains(body, want) {
 		t.Fatalf("%q missing %q", body, want)
 	}
@@ -58,7 +58,7 @@ func TestAsk(t *testing.T) {
 
 func TestGuess(t *testing.T) {
 	do := client()
-	target := game.TodaysPerson(day).Name
+	target := game.PersonFor(game.Current(day)).Name
 	if body := do("POST", "/guess", url.Values{"guess": {target}}).Body.String(); !strings.Contains(body, "That's right") {
 		t.Fatalf("correct guess: %q", body)
 	}
@@ -68,5 +68,17 @@ func TestGuess(t *testing.T) {
 	do("POST", "/guess", url.Values{"guess": {"Michael Jackson"}}) // wrong, so remembered
 	if body := do("GET", "/", nil).Body.String(); !strings.Contains(body, "<li>Michael Jackson</li>") {
 		t.Fatalf("tried guess lost on reload: %q", body)
+	}
+}
+
+func TestPageDataPeople(t *testing.T) {
+	people := pageData["people"].([]map[string]any)
+	for i, p := range people {
+		if p["id"].(int) < 1 {
+			t.Errorf("%s has no id", p["name"])
+		}
+		if i > 0 && people[i-1]["name"].(string) > p["name"].(string) {
+			t.Errorf("people not sorted by name: %s before %s", people[i-1]["name"], p["name"])
+		}
 	}
 }
