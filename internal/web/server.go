@@ -67,7 +67,7 @@ func playData(n game.Puzzle, g game.Game, msg string) map[string]any {
 	answer := func(q game.Question) map[string]any {
 		return map[string]any{"ID": int(q), "Question": q.Text(), "Answer": person.Answer(q)}
 	}
-	if g.Status != game.Playing {
+	if g.Finished() {
 		var all []map[string]any
 		for _, q := range game.Questions {
 			all = append(all, answer(q))
@@ -139,11 +139,7 @@ func newServer(now func() time.Time) *server {
 		if !ok {
 			return
 		}
-		g, _ := s.store.update(playerID(w, r), n, true, func(g *game.Game) {
-			if g.Status == game.Playing && !slices.Contains(g.Asked, q) {
-				g.Asked = append(g.Asked, q)
-			}
-		})
+		g, _ := s.store.update(playerID(w, r), n, true, func(g *game.Game) { g.Ask(q) })
 		render(w, "play.html", playData(n, g, ""))
 	})
 
@@ -158,16 +154,7 @@ func newServer(now func() time.Time) *server {
 		if !ok {
 			return
 		}
-		correct := p.ID == game.PersonFor(n).ID
-		g, _ := s.store.update(playerID(w, r), n, true, func(g *game.Game) {
-			switch {
-			case g.Status != game.Playing:
-			case correct:
-				g.Status = game.Solved
-			case !slices.Contains(g.Tried, p.ID):
-				g.Tried = append(g.Tried, p.ID)
-			}
-		})
+		g, _ := s.store.update(playerID(w, r), n, true, func(g *game.Game) { g.Guess(p.ID, game.PersonFor(n).ID) })
 		// A right guess or a finished game shows the result card, which has no message.
 		render(w, "play.html", playData(n, g, p.Name+" is not who I'm thinking of. Try again!"))
 	})
@@ -177,11 +164,7 @@ func newServer(now func() time.Time) *server {
 		if !ok {
 			return
 		}
-		g, _ := s.store.update(playerID(w, r), n, true, func(g *game.Game) {
-			if g.Status == game.Playing {
-				g.Status = game.GaveUp
-			}
-		})
+		g, _ := s.store.update(playerID(w, r), n, true, func(g *game.Game) { g.GiveUp() })
 		render(w, "play.html", playData(n, g, ""))
 	})
 
