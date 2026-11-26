@@ -61,7 +61,7 @@
       <ul id="glist"></ul>
     </div>
     <div id="result"></div>
-    <ul id="guesses">{{range .Tried}}<li>{{.}}</li>{{end}}</ul>
+    <ul id="guesses">{{range .Tried}}<li data-id="{{.ID}}">{{.Name}}</li>{{end}}</ul>
   </main>
   <script type="application/json" id="data">{{.Data}}</script>
   <script>
@@ -84,9 +84,9 @@
           .map(q => `<button type="button" hx-post="/ask/${q.id}" hx-target="#answers" hx-swap="afterbegin">${esc(q.text)}</button>`);
       },
       glist: typed => {
-        const tried = onPage('#guesses li', li => li.textContent);
-        return data.people.filter(p => !tried.has(p.name) && matches(typed, [p.name, ...(p.aliases || [])]))
-          .map(p => `<button type="button" hx-post="/guess" name="guess" value="${esc(p.name)}" hx-target="#result">${esc(p.name)}</button>`);
+        const tried = onPage('#guesses li', li => +li.dataset.id);
+        return data.people.filter(p => !tried.has(p.id) && matches(typed, [p.name, ...(p.aliases || [])]))
+          .map(p => `<button type="button" hx-post="/guess" name="person" value="${p.id}" hx-target="#result">${esc(p.name)}</button>`);
       },
     };
 

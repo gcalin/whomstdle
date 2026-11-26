@@ -39,7 +39,7 @@ var pageData = func() map[string]any {
 // state is one player's progress for one day.
 type state struct {
 	Asked []game.Question
-	Tried []string
+	Tried []int // person IDs of wrong guesses
 }
 
 type server struct {
@@ -77,14 +77,17 @@ func NewHandler(now func() time.Time) http.Handler {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		d := struct {
 			Answers []map[string]any
-			Tried   []string
+			Tried   []*game.Person
 			Data    any
 		}{Data: pageData}
 		s.play(w, r, func(st *state) {
 			for _, q := range slices.Backward(st.Asked) {
 				d.Answers = append(d.Answers, map[string]any{"ID": int(q), "Question": q.Text(), "Answer": game.PersonFor(game.Current(now())).Answer(q)})
 			}
-			d.Tried = slices.Clone(st.Tried)
+			for _, id := range st.Tried {
+				p, _ := game.PersonByID(id)
+				d.Tried = append(d.Tried, p)
+			}
 		})
 		tmpl.ExecuteTemplate(w, "index.html", d)
 	})
@@ -114,22 +117,23 @@ func NewHandler(now func() time.Time) http.Handler {
 	})
 
 	mux.HandleFunc("POST /guess", func(w http.ResponseWriter, r *http.Request) {
-		guess := r.FormValue("guess")
-		target := game.PersonFor(game.Current(now()))
-		p, known := game.FindPerson(guess)
-		correct := known && p == target
-		wrong := ""
-		if known && !correct {
+		id, err := strconv.Atoi(r.FormValue("person"))
+		p, ok := game.PersonByID(id)
+		if err != nil || !ok {
+			http.Error(w, "unknown person", http.StatusBadRequest)
+			return
+		}
+		correct := p.ID == game.PersonFor(game.Current(now())).ID
+		wrong := false
+		if !correct {
 			s.play(w, r, func(st *state) {
-				if !slices.Contains(st.Tried, p.Name) {
-					st.Tried = append(st.Tried, p.Name)
-					wrong = p.Name
+				if !slices.Contains(st.Tried, p.ID) {
+					st.Tried = append(st.Tried, p.ID)
+					wrong = true
 				}
 			})
 		}
-		tmpl.ExecuteTemplate(w, "guess.html", map[string]any{
-			"Guess": guess, "Known": known, "Correct": correct, "Name": target.Name, "Wrong": wrong,
-		})
+		tmpl.ExecuteTemplate(w, "guess.html", map[string]any{"Person": p, "Correct": correct, "Wrong": wrong})
 	})
 
 	return mux

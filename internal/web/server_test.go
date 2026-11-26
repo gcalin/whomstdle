@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -58,16 +59,20 @@ func TestAsk(t *testing.T) {
 
 func TestGuess(t *testing.T) {
 	do := client()
-	target := game.PersonFor(game.Current(day)).Name
-	if body := do("POST", "/guess", url.Values{"guess": {target}}).Body.String(); !strings.Contains(body, "That's right") {
+	target := strconv.Itoa(game.PersonFor(game.Current(day)).ID) // puzzle 1: Andrei Boboc, ID 1
+	if body := do("POST", "/guess", url.Values{"person": {target}}).Body.String(); !strings.Contains(body, "That's right") {
 		t.Fatalf("correct guess: %q", body)
 	}
-	if body := do("POST", "/guess", url.Values{"guess": {"Nobody"}}).Body.String(); strings.Contains(body, "That's right") {
+	if body := do("POST", "/guess", url.Values{"person": {"3"}}).Body.String(); strings.Contains(body, "That's right") {
 		t.Fatalf("wrong guess accepted: %q", body)
 	}
-	do("POST", "/guess", url.Values{"guess": {"Michael Jackson"}}) // wrong, so remembered
-	if body := do("GET", "/", nil).Body.String(); !strings.Contains(body, "<li>Michael Jackson</li>") {
+	if body := do("GET", "/", nil).Body.String(); !strings.Contains(body, `<li data-id="3">Michael Jackson</li>`) {
 		t.Fatalf("tried guess lost on reload: %q", body)
+	}
+	for _, bad := range []string{"abc", "999"} {
+		if rec := do("POST", "/guess", url.Values{"person": {bad}}); rec.Code != http.StatusBadRequest {
+			t.Fatalf("person=%s: got %d, want 400", bad, rec.Code)
+		}
 	}
 }
 
