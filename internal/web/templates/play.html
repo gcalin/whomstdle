@@ -1,3 +1,8 @@
+{{if .Finished}}
+    <div id="result"><p class="{{if .Won}}ok{{else}}no{{end}}">{{if .Won}}🎉 You got it!{{else}}You gave up.{{end}} It's {{.Name}}.</p></div>
+    <p>{{.Summary}}</p>
+    <div class="card"><ol id="answers">{{range .Answers}}<li data-id="{{.ID}}"><span>{{.Question}}</span><strong>{{.Answer}}</strong></li>{{end}}</ol></div>
+{{else}}
     <h2><i>1</i> Ask a question</h2>
     <div class="search">
       <input id="q" placeholder="Start typing, e.g. “Where are they from?”" autocomplete="off">
@@ -12,5 +17,7 @@
       <input id="g" placeholder="Start typing a name" autocomplete="off">
       <ul id="glist"></ul>
     </div>
-    <div id="result">{{if .Msg}}<p class="{{if .OK}}ok{{else}}no{{end}}">{{.Msg}}</p>{{end}}</div>
+    <div id="result">{{if .Msg}}<p class="no">{{.Msg}}</p>{{end}}</div>
     <ul id="guesses">{{range .Tried}}<li data-id="{{.ID}}">{{.Name}}</li>{{end}}</ul>
+    <p><button type="button" hx-post="/giveup" hx-confirm="Give up and see the answer?">Give up</button></p>
+{{end}}

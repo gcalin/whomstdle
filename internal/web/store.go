@@ -34,5 +34,7 @@ func (s *memStore) update(player string, puzzle int, create bool, f func(*game.G
 		s.games[k] = stored
 	}
 	f(stored)
-	return game.Game{Asked: slices.Clone(stored.Asked), Tried: slices.Clone(stored.Tried)}, true
+	c := *stored
+	c.Asked, c.Tried = slices.Clone(c.Asked), slices.Clone(c.Tried)
+	return c, true
 }

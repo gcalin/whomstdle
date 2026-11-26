@@ -53,19 +53,42 @@ func playerID(w http.ResponseWriter, r *http.Request) string {
 }
 
 // playData is what play.html draws: the whole game area of game g for puzzle n.
-// ok colours the message as good news.
-func playData(n int, g game.Game, msg string, ok bool) map[string]any {
+// msg is shown only while the game is being played.
+func playData(n int, g game.Game, msg string) map[string]any {
 	person := game.PersonFor(n)
+	answer := func(q game.Question) map[string]any {
+		return map[string]any{"ID": int(q), "Question": q.Text(), "Answer": person.Answer(q)}
+	}
+	if g.Status != game.Playing {
+		var all []map[string]any
+		for _, q := range game.Questions {
+			all = append(all, answer(q))
+		}
+		// No score after giving up: giving up at once would score 0, the best score.
+		summary := count(len(g.Asked), "question", "questions") + ", " + count(len(g.Tried), "miss", "misses")
+		if g.Status == game.Solved {
+			summary = "Score " + strconv.Itoa(g.Score()) + ": " + summary
+		}
+		return map[string]any{"Finished": true, "Won": g.Status == game.Solved, "Name": person.Name, "Answers": all, "Summary": summary}
+	}
 	var answers []map[string]any
 	for _, q := range slices.Backward(g.Asked) {
-		answers = append(answers, map[string]any{"ID": int(q), "Question": q.Text(), "Answer": person.Answer(q)})
+		answers = append(answers, answer(q))
 	}
 	var tried []*game.Person
 	for _, id := range g.Tried {
 		p, _ := game.PersonByID(id)
 		tried = append(tried, p)
 	}
-	return map[string]any{"Answers": answers, "Tried": tried, "Msg": msg, "OK": ok}
+	return map[string]any{"Answers": answers, "Tried": tried, "Msg": msg}
+}
+
+// count returns, for example, "1 miss" or "2 misses".
+func count(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return strconv.Itoa(n) + " " + many
 }
 
 // puzzle reads the puzzle number the page sent. When it is not a number (400) or the puzzle
@@ -93,7 +116,7 @@ func newServer(now func() time.Time) *server {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		n := game.Current(now())
 		g, _ := s.store.update(playerID(w, r), n, false, func(*game.Game) {})
-		tmpl.ExecuteTemplate(w, "index.html", map[string]any{"N": n, "Play": playData(n, g, "", false), "Data": pageData})
+		tmpl.ExecuteTemplate(w, "index.html", map[string]any{"N": n, "Play": playData(n, g, ""), "Data": pageData})
 	})
 
 	mux.HandleFunc("POST /ask/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -108,11 +131,11 @@ func newServer(now func() time.Time) *server {
 			return
 		}
 		g, _ := s.store.update(playerID(w, r), n, true, func(g *game.Game) {
-			if !slices.Contains(g.Asked, q) {
+			if g.Status == game.Playing && !slices.Contains(g.Asked, q) {
 				g.Asked = append(g.Asked, q)
 			}
 		})
-		tmpl.ExecuteTemplate(w, "play.html", playData(n, g, "", false))
+		tmpl.ExecuteTemplate(w, "play.html", playData(n, g, ""))
 	})
 
 	mux.HandleFunc("POST /guess", func(w http.ResponseWriter, r *http.Request) {
@@ -127,16 +150,30 @@ func newServer(now func() time.Time) *server {
 			return
 		}
 		correct := p.ID == game.PersonFor(n).ID
-		msg := p.Name + " is not who I'm thinking of. Try again!"
-		if correct {
-			msg = "🎉 That's right! It's " + p.Name + "!"
-		}
 		g, _ := s.store.update(playerID(w, r), n, true, func(g *game.Game) {
-			if !correct && !slices.Contains(g.Tried, p.ID) {
+			switch {
+			case g.Status != game.Playing:
+			case correct:
+				g.Status = game.Solved
+			case !slices.Contains(g.Tried, p.ID):
 				g.Tried = append(g.Tried, p.ID)
 			}
 		})
-		tmpl.ExecuteTemplate(w, "play.html", playData(n, g, msg, correct))
+		// A right guess or a finished game shows the result card, which has no message.
+		tmpl.ExecuteTemplate(w, "play.html", playData(n, g, p.Name+" is not who I'm thinking of. Try again!"))
+	})
+
+	mux.HandleFunc("POST /giveup", func(w http.ResponseWriter, r *http.Request) {
+		n, ok := puzzle(w, r, now())
+		if !ok {
+			return
+		}
+		g, _ := s.store.update(playerID(w, r), n, true, func(g *game.Game) {
+			if g.Status == game.Playing {
+				g.Status = game.GaveUp
+			}
+		})
+		tmpl.ExecuteTemplate(w, "play.html", playData(n, g, ""))
 	})
 
 	return s
