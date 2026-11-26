@@ -47,8 +47,8 @@ func TestAsk(t *testing.T) {
 	if body := do("POST", "/ask/1", nil).Body.String(); !strings.Contains(body, want) {
 		t.Fatalf("%q missing %q", body, want)
 	}
-	if rec := do("POST", "/ask/1", nil); rec.Code != http.StatusNoContent {
-		t.Fatalf("repeat question: got %d, want 204", rec.Code)
+	if rec := do("POST", "/ask/1", nil); rec.Code != 200 || strings.Count(rec.Body.String(), `<li data-id="1"><span>`) != 1 {
+		t.Fatalf("repeat question: got %d, want 200 with the answer once: %q", rec.Code, rec.Body.String())
 	}
 	if rec := do("POST", "/ask/99", nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("got %d, want 404", rec.Code)
@@ -61,13 +61,17 @@ func TestAsk(t *testing.T) {
 func TestGuess(t *testing.T) {
 	do := client(NewHandler(dayClock))
 	target := strconv.Itoa(game.PersonFor(game.Current(day)).ID) // puzzle 1: Andrei Boboc, ID 1
-	if body := do("POST", "/guess", url.Values{"person": {target}}).Body.String(); !strings.Contains(body, "That's right") {
-		t.Fatalf("correct guess: %q", body)
+	tried := `<li data-id="3">Michael Jackson</li>`
+	if body := do("POST", "/guess", url.Values{"person": {"3"}}).Body.String(); strings.Contains(body, `class="ok"`) || !strings.Contains(body, tried) {
+		t.Fatalf("wrong guess: %q", body)
 	}
-	if body := do("POST", "/guess", url.Values{"person": {"3"}}).Body.String(); strings.Contains(body, "That's right") {
-		t.Fatalf("wrong guess accepted: %q", body)
+	if body := do("POST", "/ask/2", nil).Body.String(); !strings.Contains(body, tried) {
+		t.Fatalf("ask reply lost the tried names: %q", body)
 	}
-	if body := do("GET", "/", nil).Body.String(); !strings.Contains(body, `<li data-id="3">Michael Jackson</li>`) {
+	if body := do("POST", "/guess", url.Values{"person": {target}}).Body.String(); !strings.Contains(body, `class="ok"`) || !strings.Contains(body, `<li data-id="2"><span>`) || !strings.Contains(body, tried) {
+		t.Fatalf("correct guess reply should show the message, the answers and the tried names: %q", body)
+	}
+	if body := do("GET", "/", nil).Body.String(); !strings.Contains(body, tried) {
 		t.Fatalf("tried guess lost on reload: %q", body)
 	}
 	for _, bad := range []string{"abc", "999"} {

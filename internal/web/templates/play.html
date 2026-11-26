@@ -1,0 +1,16 @@
+    <h2><i>1</i> Ask a question</h2>
+    <div class="search">
+      <input id="q" placeholder="Start typing, e.g. “Where are they from?”" autocomplete="off">
+      <ul id="qlist"></ul>
+    </div>
+
+    <h2><i>2</i> What you know</h2>
+    <div class="card"><ol id="answers">{{range .Answers}}<li data-id="{{.ID}}"><span>{{.Question}}</span><strong>{{.Answer}}</strong></li>{{end}}</ol></div>
+
+    <h2><i>3</i> Make a guess</h2>
+    <div class="search">
+      <input id="g" placeholder="Start typing a name" autocomplete="off">
+      <ul id="glist"></ul>
+    </div>
+    <div id="result">{{if .Msg}}<p class="{{if .OK}}ok{{else}}no{{end}}">{{.Msg}}</p>{{end}}</div>
+    <ul id="guesses">{{range .Tried}}<li data-id="{{.ID}}">{{.Name}}</li>{{end}}</ul>

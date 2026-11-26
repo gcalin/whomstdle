@@ -52,6 +52,22 @@ func playerID(w http.ResponseWriter, r *http.Request) string {
 	return id
 }
 
+// playData is what play.html draws: the whole game area of game g for puzzle n.
+// ok colours the message as good news.
+func playData(n int, g game.Game, msg string, ok bool) map[string]any {
+	person := game.PersonFor(n)
+	var answers []map[string]any
+	for _, q := range slices.Backward(g.Asked) {
+		answers = append(answers, map[string]any{"ID": int(q), "Question": q.Text(), "Answer": person.Answer(q)})
+	}
+	var tried []*game.Person
+	for _, id := range g.Tried {
+		p, _ := game.PersonByID(id)
+		tried = append(tried, p)
+	}
+	return map[string]any{"Answers": answers, "Tried": tried, "Msg": msg, "OK": ok}
+}
+
 // NewHandler returns the game's HTTP routes. now supplies the current time so tests can fix the day.
 func NewHandler(now func() time.Time) http.Handler { return newServer(now) }
 
@@ -60,21 +76,9 @@ func newServer(now func() time.Time) *server {
 	s := &server{now: now, store: memStore{games: map[gameKey]*game.Game{}}, mux: mux}
 
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		d := struct {
-			Answers []map[string]any
-			Tried   []*game.Person
-			Data    any
-		}{Data: pageData}
 		n := game.Current(now())
 		g, _ := s.store.update(playerID(w, r), n, false, func(*game.Game) {})
-		for _, q := range slices.Backward(g.Asked) {
-			d.Answers = append(d.Answers, map[string]any{"ID": int(q), "Question": q.Text(), "Answer": game.PersonFor(n).Answer(q)})
-		}
-		for _, id := range g.Tried {
-			p, _ := game.PersonByID(id)
-			d.Tried = append(d.Tried, p)
-		}
-		tmpl.ExecuteTemplate(w, "index.html", d)
+		tmpl.ExecuteTemplate(w, "index.html", map[string]any{"Play": playData(n, g, "", false), "Data": pageData})
 	})
 
 	mux.HandleFunc("POST /ask/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -85,21 +89,12 @@ func newServer(now func() time.Time) *server {
 		}
 		q := game.Questions[id]
 		n := game.Current(now())
-		fresh := false
-		s.store.update(playerID(w, r), n, true, func(g *game.Game) {
-			if fresh = !slices.Contains(g.Asked, q); fresh {
+		g, _ := s.store.update(playerID(w, r), n, true, func(g *game.Game) {
+			if !slices.Contains(g.Asked, q) {
 				g.Asked = append(g.Asked, q)
 			}
 		})
-		if !fresh {
-			w.WriteHeader(http.StatusNoContent) // already asked: htmx leaves the page alone
-			return
-		}
-		tmpl.ExecuteTemplate(w, "answer.html", map[string]any{
-			"ID":       id,
-			"Question": q.Text(),
-			"Answer":   game.PersonFor(n).Answer(q),
-		})
+		tmpl.ExecuteTemplate(w, "play.html", playData(n, g, "", false))
 	})
 
 	mux.HandleFunc("POST /guess", func(w http.ResponseWriter, r *http.Request) {
@@ -111,14 +106,16 @@ func newServer(now func() time.Time) *server {
 		}
 		n := game.Current(now())
 		correct := p.ID == game.PersonFor(n).ID
-		wrong := false
-		s.store.update(playerID(w, r), n, true, func(g *game.Game) {
+		msg := p.Name + " is not who I'm thinking of. Try again!"
+		if correct {
+			msg = "🎉 That's right! " + p.Name + " is today's person!"
+		}
+		g, _ := s.store.update(playerID(w, r), n, true, func(g *game.Game) {
 			if !correct && !slices.Contains(g.Tried, p.ID) {
 				g.Tried = append(g.Tried, p.ID)
-				wrong = true
 			}
 		})
-		tmpl.ExecuteTemplate(w, "guess.html", map[string]any{"Person": p, "Correct": correct, "Wrong": wrong})
+		tmpl.ExecuteTemplate(w, "play.html", playData(n, g, msg, correct))
 	})
 
 	return s

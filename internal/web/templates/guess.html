@@ -1,3 +1,0 @@
-{{if .Correct}}<p class="ok">🎉 That's right! {{.Person.Name}} is today's person!</p>
-{{else}}<p class="no">{{.Person.Name}} is not who I'm thinking of. Try again!</p>{{end}}
-{{if .Wrong}}<ul id="guesses" hx-swap-oob="beforeend"><li data-id="{{.Person.ID}}">{{.Person.Name}}</li></ul>{{end}}

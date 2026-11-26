@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Whomstdle</title>
-  <script src="https://unpkg.com/htmx.org@2"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.11/dist/htmx.min.js"></script>
   <style>
     :root { --accent: #2f6fdb; --border: #e3e6ea; --muted: #6b7280; }
     * { box-sizing: border-box; }
@@ -46,22 +46,8 @@
     <p class="hero">Who's the mystery person?</p>
     <p class="sub">Ask questions, collect clues, then make your guess.</p>
 
-    <h2><i>1</i> Ask a question</h2>
-    <div class="search">
-      <input id="q" placeholder="Start typing, e.g. “Where are they from?”" autocomplete="off">
-      <ul id="qlist"></ul>
-    </div>
-
-    <h2><i>2</i> What you know</h2>
-    <div class="card"><ol id="answers">{{range .Answers}}{{template "answer.html" .}}{{end}}</ol></div>
-
-    <h2><i>3</i> Make a guess</h2>
-    <div class="search">
-      <input id="g" placeholder="Start typing a name" autocomplete="off">
-      <ul id="glist"></ul>
-    </div>
-    <div id="result"></div>
-    <ul id="guesses">{{range .Tried}}<li data-id="{{.ID}}">{{.Name}}</li>{{end}}</ul>
+    <div id="play" hx-target="#play" hx-swap="innerHTML" hx-sync="#play:queue all">
+{{template "play.html" .Play}}    </div>
   </main>
   <script type="application/json" id="data">{{.Data}}</script>
   <script>
@@ -81,46 +67,47 @@
       qlist: typed => {
         const asked = onPage('#answers li', li => +li.dataset.id);
         return data.questions.filter(q => !asked.has(q.id) && matches(typed, [q.text, ...(q.aliases || [])]))
-          .map(q => `<button type="button" hx-post="/ask/${q.id}" hx-target="#answers" hx-swap="afterbegin">${esc(q.text)}</button>`);
+          .map(q => `<button type="button" hx-post="/ask/${q.id}">${esc(q.text)}</button>`);
       },
       glist: typed => {
         const tried = onPage('#guesses li', li => +li.dataset.id);
         return data.people.filter(p => !tried.has(p.id) && matches(typed, [p.name, ...(p.aliases || [])]))
-          .map(p => `<button type="button" hx-post="/guess" name="person" value="${p.id}" hx-target="#result">${esc(p.name)}</button>`);
+          .map(p => `<button type="button" hx-post="/guess" name="person" value="${p.id}">${esc(p.name)}</button>`);
       },
     };
 
     // Each search box: filter as you type; arrow keys move through the list, Enter picks (the first by default).
-    document.querySelectorAll('.search').forEach(box => {
-      const input = box.querySelector('input'), list = box.querySelector('ul');
-      const items = () => [...list.querySelectorAll('button')];
-      const current = () => items().findIndex(b => b.classList.contains('active'));
-      const mark = i => {
-        items().forEach((b, n) => b.classList.toggle('active', n === i));
-        items()[i]?.scrollIntoView({block: 'nearest'});
-      };
-      input.addEventListener('input', () => {
-        list.innerHTML = buttons[list.id](input.value).map(b => `<li>${b}</li>`).join('');
-        htmx.process(list);
-        mark(0);
-      });
-      list.addEventListener('htmx:afterRequest', () => {
-        input.value = '';
-        list.innerHTML = '';
-        input.focus();
-      });
-      input.addEventListener('keydown', e => {
-        const n = items().length;
-        if (!n) return;
-        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-          e.preventDefault();
-          mark((current() + (e.key === 'ArrowDown' ? 1 : -1) + n) % n);
-        } else if (e.key === 'Enter') {
-          e.preventDefault();
-          items()[Math.max(current(), 0)].click();
-        }
-      });
+    // The boxes are redrawn after every reply, so the listeners are on the whole page.
+    const items = box => [...box.querySelectorAll('button')];
+    const mark = (box, i) => {
+      items(box).forEach((b, n) => b.classList.toggle('active', n === i));
+      items(box)[i]?.scrollIntoView({block: 'nearest'});
+    };
+    document.addEventListener('input', e => {
+      const box = e.target.closest('.search');
+      if (!box) return;
+      const list = box.querySelector('ul');
+      list.innerHTML = buttons[list.id](e.target.value).map(b => `<li>${b}</li>`).join('');
+      htmx.process(list);
+      mark(box, 0);
     });
+    document.addEventListener('keydown', e => {
+      const box = e.target.closest('.search');
+      const n = box ? items(box).length : 0;
+      if (!n) return;
+      const current = items(box).findIndex(b => b.classList.contains('active'));
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        mark(box, (current + (e.key === 'ArrowDown' ? 1 : -1) + n) % n);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        items(box)[Math.max(current, 0)].click();
+      }
+    });
+    // After a reply is drawn, put the cursor back in the box that was used.
+    let used = null;
+    document.addEventListener('htmx:beforeRequest', e => { used = e.target.closest('.search')?.querySelector('input').id; });
+    document.addEventListener('htmx:afterSwap', () => { if (used) document.getElementById(used).focus(); });
   </script>
 </body>
 </html>
