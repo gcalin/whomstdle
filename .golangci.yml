@@ -1,7 +1,27 @@
-# golangci-lint settings. Uses the default linters (errcheck, govet, ineffassign, staticcheck, unused).
+# golangci-lint settings. Uses the default linters (errcheck, govet, ineffassign, staticcheck, unused), plus depguard for the layer import rule.
 version: "2"
 
 issues:
   # Show every problem at once, instead of the first few of each kind.
   max-issues-per-linter: 0
   max-same-issues: 0
+
+linters:
+  enable:
+    - depguard
+  settings:
+    depguard:
+      rules:
+        domain:
+          list-mode: strict
+          files: ["**/internal/*/domain/**"]
+          allow: [$gostd]
+        app:
+          list-mode: strict
+          files: ["**/internal/*/app/**"]
+          allow: [$gostd, github.com/gcalin/whomstdle/internal/game/domain]
+        adapters:
+          files: ["**/internal/*/adapter/**"]
+          deny:
+            - pkg: github.com/gcalin/whomstdle/internal/game/adapter
+              desc: an adapter must not import another adapter
