@@ -24,6 +24,10 @@ type playView struct {
 	Summary  string
 	Tried    []app.PersonName
 	Msg      string
+	// Hint is the hint's text once used. Until then HintLock says how many questions are still needed,
+	// e.g. "2 more questions", or is empty when the hint can be used. Both are set only while playing.
+	Hint     string
+	HintLock string
 	// SecondsLeft is the time until the next puzzle; used only on the result card.
 	SecondsLeft int
 }
@@ -44,7 +48,6 @@ type questionData struct {
 	ID      domain.Question `json:"id"`
 	Text    string          `json:"text"`
 	Aliases []string        `json:"aliases"`
-	Hint    bool            `json:"hint"`
 }
 
 type personData struct {
@@ -56,10 +59,17 @@ type personData struct {
 func newPlayView(b app.Board, msg string) playView {
 	v := playView{Finished: b.Status != domain.Playing, Won: b.Status == domain.Solved, Name: b.Name, Tried: b.Tried, Msg: msg, SecondsLeft: b.SecondsLeft}
 	for _, a := range b.Answers {
+		if a.Question == domain.Hint && !v.Finished {
+			v.Hint = a.Text // shown on the hint line, not in the list
+			continue
+		}
 		v.Answers = append(v.Answers, answerView{ID: a.Question, Question: a.Question.Text(), Answer: a.Text})
 	}
 	if !v.Finished {
 		slices.Reverse(v.Answers) // newest first
+		if left := domain.HintAfter - b.Asked; left > 0 {
+			v.HintLock = count(left, "more question", "more questions")
+		}
 		return v
 	}
 	// No score after giving up: giving up at once would score 0, the best score.
@@ -77,7 +87,10 @@ func newPlayView(b app.Board, msg string) playView {
 func newSearchData(c app.Choices) searchData {
 	var d searchData
 	for _, q := range c.Questions {
-		d.Questions = append(d.Questions, questionData{ID: q, Text: q.Text(), Aliases: q.Aliases(), Hint: q == domain.Hint})
+		if q == domain.Hint {
+			continue // the hint has its own button, not a place in the question search
+		}
+		d.Questions = append(d.Questions, questionData{ID: q, Text: q.Text(), Aliases: q.Aliases()})
 	}
 	for _, p := range c.People {
 		d.People = append(d.People, personData{ID: p.ID, Name: p.Name, Aliases: p.Aliases})
@@ -92,3 +105,7 @@ func count(n int, one, many string) string {
 	}
 	return strconv.Itoa(n) + " " + many
 }
+
+// HintID and HintCost let play.html draw the hint button.
+func (playView) HintID() domain.Question { return domain.Hint }
+func (playView) HintCost() int           { return domain.HintCost }

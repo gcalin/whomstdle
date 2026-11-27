@@ -36,6 +36,14 @@
     #guesses:empty { display: none; }
     #guesses:not(:empty)::before { content: "Already tried:"; color: var(--muted); font-size: 14px; }
     #guesses li { padding: 2px 12px; border-radius: 99px; background: #fdeeee; color: #a12a2a; font-size: 14px; }
+    .hint { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; padding: 8px 14px; border: 1px dashed var(--border); border-radius: 6px; color: var(--muted); font-size: 14px; }
+    .hint span { flex: 1; }
+    .hint.used { border: 0; background: #fff8e1; color: #6b4e00; font-size: 16px; }
+    .hint button, .quiet { font: inherit; font-size: 14px; padding: 4px 12px; border-radius: 6px; cursor: pointer; }
+    .hint button { border: 1px solid var(--accent); background: #fff; color: var(--accent); }
+    .hint button:hover { background: #eef3fd; }
+    .quiet { margin-left: auto; border: 0; background: none; color: var(--muted); font-weight: 400; }
+    .quiet:hover { color: #a12a2a; }
     .ok { background: #e8f6ec; color: #1d6b35; }
     .no { background: #fdeeee; color: #a12a2a; }
   </style>
@@ -66,12 +74,8 @@
     const buttons = {
       qlist: typed => {
         const asked = onPage('#answers li', li => +li.dataset.id);
-        // 5 and 3 must match domain.HintAfter and domain.HintCost.
-        const locked = asked.size < 5;
         return data.questions.filter(q => !asked.has(q.id) && matches(typed, [q.text, ...(q.aliases || [])]))
-          .map(q => q.hint && locked
-            ? `<button type="button" disabled>${esc(q.text)} (unlocks after 5 questions, costs 3)</button>`
-            : `<button type="button" hx-post="/ask/${q.id}">${esc(q.text)}${q.hint ? ' (costs 3)' : ''}</button>`);
+          .map(q => `<button type="button" hx-post="/ask/${q.id}">${esc(q.text)}</button>`);
       },
       glist: typed => {
         const tried = onPage('#guesses li', li => +li.dataset.id);
@@ -82,7 +86,7 @@
 
     // Each search box: filter as you type; arrow keys move through the list, Enter picks (the first by default).
     // The boxes are redrawn after every reply, so the listeners are on the whole page.
-    const items = box => [...box.querySelectorAll('button:not([disabled])')];
+    const items = box => [...box.querySelectorAll('button')];
     const mark = (box, i) => {
       items(box).forEach((b, n) => b.classList.toggle('active', n === i));
       items(box)[i]?.scrollIntoView({block: 'nearest'});

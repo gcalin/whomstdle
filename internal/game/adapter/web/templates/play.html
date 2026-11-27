@@ -9,16 +9,18 @@
       <input id="q" placeholder="Start typing, e.g. “Where are they from?”" autocomplete="off">
       <ul id="qlist"></ul>
     </div>
-
-    <h2><i>2</i> What you know</h2>
-    <div class="card"><ol id="answers">{{range .Answers}}<li data-id="{{.ID}}"><span>{{.Question}}</span><strong>{{.Answer}}</strong></li>{{end}}</ol></div>
-
-    <h2><i>3</i> Make a guess</h2>
+    {{if .Hint}}<p class="hint used">💡 <span><b>Hint:</b> {{.Hint}}</span></p>
+    {{else if .HintLock}}<p class="hint">💡 <span>Stuck? A hint unlocks after {{.HintLock}}. It costs {{.HintCost}} points.</span></p>
+    {{else}}<p class="hint">💡 <span>Stuck? A one-sentence hint is ready.</span> <button type="button" hx-post="/ask/{{.HintID}}">Use hint (+{{.HintCost}})</button></p>
+    {{end}}
+    <h2><i>2</i> Make a guess <button type="button" class="quiet" hx-post="/giveup">Give up</button></h2>
     <div class="search">
       <input id="g" placeholder="Start typing a name" autocomplete="off">
       <ul id="glist"></ul>
     </div>
     <div id="result">{{if .Msg}}<p class="no">{{.Msg}}</p>{{end}}</div>
     <ul id="guesses">{{range .Tried}}<li data-id="{{.ID}}">{{.Name}}</li>{{end}}</ul>
-    <p><button type="button" hx-post="/giveup" hx-confirm="Give up and see the answer?">Give up</button></p>
+
+    <h2><i>3</i> What you know</h2>
+    <div class="card"><ol id="answers">{{range .Answers}}<li data-id="{{.ID}}"><span>{{.Question}}</span><strong>{{.Answer}}</strong></li>{{end}}</ol></div>
 {{end}}
