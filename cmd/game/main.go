@@ -11,11 +11,13 @@ import (
 	"github.com/gcalin/whomstdle/internal/game/app"
 )
 
+// newHandler builds the whole game: storage, app and web. Tests call it with a fixed clock.
+func newHandler(now func() time.Time) http.Handler {
+	return web.NewHandler(app.New(memory.NewGames(), memory.NewCatalog(), now))
+}
+
 func main() {
-	games := memory.NewGames()
-	catalog := memory.NewCatalog()
-	svc := app.New(games, catalog, time.Now)
 	addr := ":8080"
 	log.Println("listening on", addr)
-	log.Fatal(http.ListenAndServe(addr, web.NewHandler(svc)))
+	log.Fatal(http.ListenAndServe(addr, newHandler(time.Now)))
 }

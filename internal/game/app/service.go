@@ -18,6 +18,7 @@ type Service struct {
 	now     func() time.Time
 }
 
+// New returns a Service that keeps games in games, looks people up in catalog and reads the time from now.
 func New(games GameStore, catalog Catalog, now func() time.Time) *Service {
 	return &Service{games: games, catalog: catalog, now: now}
 }
@@ -36,6 +37,7 @@ func (s *Service) Today(ctx context.Context, player domain.PlayerID) (Board, err
 	return b, nil
 }
 
+// Ask records question q in the player's game for puzzle p and returns the new board.
 func (s *Service) Ask(ctx context.Context, player domain.PlayerID, p domain.Puzzle, q domain.Question) (Board, error) {
 	if !q.Valid() {
 		return Board{}, ErrUnknownQuestion
@@ -46,6 +48,7 @@ func (s *Service) Ask(ctx context.Context, player domain.PlayerID, p domain.Puzz
 	return s.update(ctx, "ask", player, p, func(g *domain.Game) error { g.Ask(q); return nil })
 }
 
+// Guess records a guess of person id in the player's game for puzzle p and returns the new board.
 func (s *Service) Guess(ctx context.Context, player domain.PlayerID, p domain.Puzzle, id domain.PersonID) (Board, error) {
 	_, ok, err := s.catalog.Person(ctx, id)
 	if err != nil {
@@ -64,6 +67,7 @@ func (s *Service) Guess(ctx context.Context, player domain.PlayerID, p domain.Pu
 	return s.update(ctx, "guess", player, p, func(g *domain.Game) error { g.Guess(id, answer.ID); return nil })
 }
 
+// GiveUp ends the player's game for puzzle p and returns the new board.
 func (s *Service) GiveUp(ctx context.Context, player domain.PlayerID, p domain.Puzzle) (Board, error) {
 	if !domain.Open(p, s.now()) {
 		return Board{}, ErrClosed

@@ -27,8 +27,8 @@ func render(w http.ResponseWriter, name string, data any) {
 }
 
 type server struct {
-	svc *app.Service
-	mux *http.ServeMux
+	game Game
+	mux  *http.ServeMux
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
@@ -68,17 +68,17 @@ func replyPlay(w http.ResponseWriter, r *http.Request, b app.Board, err error, m
 }
 
 // NewHandler returns the game's HTTP routes.
-func NewHandler(svc *app.Service) http.Handler {
+func NewHandler(g Game) http.Handler {
 	mux := http.NewServeMux()
-	s := &server{svc: svc, mux: mux}
+	s := &server{game: g, mux: mux}
 
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		b, err := s.svc.Today(r.Context(), playerID(w, r))
+		b, err := s.game.Today(r.Context(), playerID(w, r))
 		if err != nil {
 			replyError(w, r, err)
 			return
 		}
-		c, err := s.svc.Choices(r.Context())
+		c, err := s.game.Choices(r.Context())
 		if err != nil {
 			replyError(w, r, err)
 			return
@@ -96,7 +96,7 @@ func NewHandler(svc *app.Service) http.Handler {
 		if !ok {
 			return
 		}
-		b, err := s.svc.Ask(r.Context(), playerID(w, r), p, domain.Question(id))
+		b, err := s.game.Ask(r.Context(), playerID(w, r), p, domain.Question(id))
 		replyPlay(w, r, b, err, "")
 	})
 
@@ -111,13 +111,17 @@ func NewHandler(svc *app.Service) http.Handler {
 			return
 		}
 		id := domain.PersonID(n)
-		b, err := s.svc.Guess(r.Context(), playerID(w, r), p, id)
+		b, err := s.game.Guess(r.Context(), playerID(w, r), p, id)
+		if err != nil {
+			replyError(w, r, err)
+			return
+		}
 		// A right guess or a finished game shows the result card, which has no message.
 		msg := ""
 		if i := slices.IndexFunc(b.Tried, func(t app.PersonName) bool { return t.ID == id }); i >= 0 && b.Status == domain.Playing {
 			msg = b.Tried[i].Name + " is not who I'm thinking of. Try again!"
 		}
-		replyPlay(w, r, b, err, msg)
+		render(w, "play.html", newPlayView(b, msg))
 	})
 
 	mux.HandleFunc("POST /giveup", func(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +129,7 @@ func NewHandler(svc *app.Service) http.Handler {
 		if !ok {
 			return
 		}
-		b, err := s.svc.GiveUp(r.Context(), playerID(w, r), p)
+		b, err := s.game.GiveUp(r.Context(), playerID(w, r), p)
 		replyPlay(w, r, b, err, "")
 	})
 
