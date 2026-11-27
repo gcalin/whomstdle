@@ -24,6 +24,8 @@ type playView struct {
 	Summary  string
 	Tried    []app.PersonName
 	Msg      string
+	// SecondsLeft is the time until the next puzzle; used only on the result card.
+	SecondsLeft int
 }
 
 type answerView struct {
@@ -42,6 +44,7 @@ type questionData struct {
 	ID      domain.Question `json:"id"`
 	Text    string          `json:"text"`
 	Aliases []string        `json:"aliases"`
+	Hint    bool            `json:"hint"`
 }
 
 type personData struct {
@@ -51,7 +54,7 @@ type personData struct {
 }
 
 func newPlayView(b app.Board, msg string) playView {
-	v := playView{Finished: b.Status != domain.Playing, Won: b.Status == domain.Solved, Name: b.Name, Tried: b.Tried, Msg: msg}
+	v := playView{Finished: b.Status != domain.Playing, Won: b.Status == domain.Solved, Name: b.Name, Tried: b.Tried, Msg: msg, SecondsLeft: b.SecondsLeft}
 	for _, a := range b.Answers {
 		v.Answers = append(v.Answers, answerView{ID: a.Question, Question: a.Question.Text(), Answer: a.Text})
 	}
@@ -60,7 +63,11 @@ func newPlayView(b app.Board, msg string) playView {
 		return v
 	}
 	// No score after giving up: giving up at once would score 0, the best score.
-	v.Summary = count(b.Asked, "question", "questions") + ", " + count(len(b.Tried), "miss", "misses")
+	v.Summary = count(b.Asked, "question", "questions")
+	if b.HintUsed {
+		v.Summary += ", hint +" + strconv.Itoa(domain.HintCost)
+	}
+	v.Summary += ", " + count(len(b.Tried), "miss", "misses")
 	if v.Won {
 		v.Summary = "Score " + strconv.Itoa(b.Score) + ": " + v.Summary
 	}
@@ -70,7 +77,7 @@ func newPlayView(b app.Board, msg string) playView {
 func newSearchData(c app.Choices) searchData {
 	var d searchData
 	for _, q := range c.Questions {
-		d.Questions = append(d.Questions, questionData{ID: q, Text: q.Text(), Aliases: q.Aliases()})
+		d.Questions = append(d.Questions, questionData{ID: q, Text: q.Text(), Aliases: q.Aliases(), Hint: q == domain.Hint})
 	}
 	for _, p := range c.People {
 		d.People = append(d.People, personData{ID: p.ID, Name: p.Name, Aliases: p.Aliases})

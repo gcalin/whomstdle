@@ -132,6 +132,10 @@ func TestRender(t *testing.T) {
 	if body := send(f, "POST", "/giveup", url.Values{"puzzle": {"1"}}).Body.String(); !strings.Contains(body, "It's Test Person.") {
 		t.Errorf("finished board: %q", body)
 	}
+	f = &fakeGame{board: app.Board{Status: domain.Solved, SecondsLeft: 43200}}
+	if body := send(f, "POST", "/giveup", url.Values{"puzzle": {"1"}}).Body.String(); !strings.Contains(body, `data-left="43200"`) {
+		t.Errorf("countdown: %q", body)
+	}
 	f = &fakeGame{board: app.Board{Tried: []app.PersonName{{ID: 3, Name: "Wrong Person"}}}}
 	if body := send(f, "POST", "/guess", url.Values{"puzzle": {"1"}, "person": {"3"}}).Body.String(); !strings.Contains(body, "Wrong Person is not who I") {
 		t.Errorf("wrong guess: %q", body)

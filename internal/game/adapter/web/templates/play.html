@@ -1,6 +1,7 @@
 {{if .Finished}}
     <div id="result"><p class="{{if .Won}}ok{{else}}no{{end}}">{{if .Won}}🎉 You got it!{{else}}You gave up.{{end}} It's {{.Name}}.</p></div>
     <p>{{.Summary}}</p>
+    <p id="next" data-left="{{.SecondsLeft}}"></p>
     <div class="card"><ol id="answers">{{range .Answers}}<li data-id="{{.ID}}"><span>{{.Question}}</span><strong>{{.Answer}}</strong></li>{{end}}</ol></div>
 {{else}}
     <h2><i>1</i> Ask a question</h2>

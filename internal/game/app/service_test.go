@@ -124,6 +124,31 @@ func TestAnswersInOrderAsked(t *testing.T) {
 	}
 }
 
+func TestSecondsLeft(t *testing.T) {
+	at := day1
+	s, _ := newService(&at)
+	b, _ := s.Ask(ctx, "a", 1, domain.Alive)
+	if b.SecondsLeft != 0 {
+		t.Errorf("playing: SecondsLeft = %d, want 0", b.SecondsLeft)
+	}
+	b, _ = s.GiveUp(ctx, "a", 1)
+	if b.SecondsLeft != 43200 {
+		t.Errorf("finished: SecondsLeft = %d, want 43200", b.SecondsLeft)
+	}
+}
+
+func TestHintNotCounted(t *testing.T) {
+	at := day1
+	s, _ := newService(&at)
+	var b Board
+	for _, q := range []domain.Question{domain.Alive, domain.Gender, domain.Field, domain.Continent, domain.BirthDecade, domain.Hint} {
+		b, _ = s.Ask(ctx, "a", 1, q)
+	}
+	if !b.HintUsed || b.Asked != 5 || len(b.Answers) != 6 {
+		t.Errorf("HintUsed = %v, Asked = %d, %d answers, want true, 5 and 6", b.HintUsed, b.Asked, len(b.Answers))
+	}
+}
+
 func TestTodayStoresNothing(t *testing.T) {
 	at := day1
 	s, store := newService(&at)

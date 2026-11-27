@@ -15,6 +15,22 @@ func TestAsk(t *testing.T) {
 	}
 }
 
+func TestAskHintLocked(t *testing.T) {
+	var g Game
+	for _, q := range []Question{Alive, Gender, Field, Continent} {
+		g.Ask(q)
+	}
+	g.Ask(Hint)
+	if g.HintUsed() || len(g.Asked) != 4 {
+		t.Errorf("hint after 4 questions: Asked = %v, want the hint ignored", g.Asked)
+	}
+	g.Ask(BirthDecade)
+	g.Ask(Hint)
+	if !g.HintUsed() || len(g.Asked) != 6 {
+		t.Errorf("hint after 5 questions: Asked = %v, want the hint added", g.Asked)
+	}
+}
+
 func TestGuess(t *testing.T) {
 	var g Game
 	g.Guess(2, 1)
@@ -82,6 +98,7 @@ func TestScore(t *testing.T) {
 		{"questions only", Game{Asked: []Question{Alive, Gender}}, 2},
 		{"wrong guesses only", Game{Tried: []PersonID{2, 3}}, 2},
 		{"questions and wrong guesses", Game{Asked: []Question{Alive}, Tried: []PersonID{2, 3}}, 3},
+		{"hint costs 3", Game{Asked: []Question{Alive, Hint}}, 4},
 		{"solved game counts the same", Game{Asked: []Question{Alive}, Tried: []PersonID{2}, Status: Solved}, 2},
 	} {
 		if got := c.g.Score(); got != c.want {

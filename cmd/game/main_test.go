@@ -170,6 +170,25 @@ func TestSolve(t *testing.T) {
 	}
 }
 
+func TestHint(t *testing.T) {
+	h := newHandler(dayClock)
+	do := client(h)
+	person := answerPerson(t)
+	hint := person.Answer(domain.Hint)
+	if body := do("POST", "/ask/9", p1).Body.String(); strings.Contains(body, hint) {
+		t.Fatalf("the hint asked first should be ignored: %q", body)
+	}
+	for _, q := range []string{"0", "1", "2", "3", "4"} {
+		do("POST", "/ask/"+q, p1)
+	}
+	if body := do("POST", "/ask/9", p1).Body.String(); !strings.Contains(body, hint) {
+		t.Fatalf("the hint after 5 questions is missing: %q", body)
+	}
+	if body := do("POST", "/guess", guessForm("1")).Body.String(); !strings.Contains(body, "Score 8: 5 questions, hint &#43;3, 0 misses") {
+		t.Errorf("a right guess after the hint: %q", body)
+	}
+}
+
 func TestGiveUp(t *testing.T) {
 	h := newHandler(dayClock)
 	if body := client(h)("POST", "/giveup", p1).Body.String(); !strings.Contains(body, "You gave up.") || !strings.Contains(body, "0 questions, 0 misses") {

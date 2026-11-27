@@ -18,15 +18,31 @@ type Game struct {
 	Status Status
 }
 
-// Score: 1 point per question and per wrong guess. Step 7 adds the hint cost.
-func (g Game) Score() int { return len(g.Asked) + len(g.Tried) }
+// HintAfter is how many questions must be asked before the hint can be asked.
+const HintAfter = 5
+
+// HintCost is the points the hint costs.
+const HintCost = 3
+
+// HintUsed reports whether the hint was asked.
+func (g Game) HintUsed() bool { return slices.Contains(g.Asked, Hint) }
+
+// Score: 1 point per question and per wrong guess. The hint costs HintCost, not 1.
+func (g Game) Score() int {
+	score := len(g.Asked) + len(g.Tried)
+	if g.HintUsed() {
+		score += HintCost - 1
+	}
+	return score
+}
 
 // Finished reports whether the game has ended.
 func (g Game) Finished() bool { return g.Status != Playing }
 
-// Ask records question q. It does nothing when the game is finished or q was already asked.
+// Ask records question q. It does nothing when the game is finished, q was already asked,
+// or q is the hint and fewer than HintAfter questions were asked.
 func (g *Game) Ask(q Question) {
-	if !g.Finished() && !slices.Contains(g.Asked, q) {
+	if !g.Finished() && !slices.Contains(g.Asked, q) && (q != Hint || len(g.Asked) >= HintAfter) {
 		g.Asked = append(g.Asked, q)
 	}
 }

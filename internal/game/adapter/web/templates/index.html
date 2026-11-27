@@ -66,8 +66,12 @@
     const buttons = {
       qlist: typed => {
         const asked = onPage('#answers li', li => +li.dataset.id);
+        // 5 and 3 must match domain.HintAfter and domain.HintCost.
+        const locked = asked.size < 5;
         return data.questions.filter(q => !asked.has(q.id) && matches(typed, [q.text, ...(q.aliases || [])]))
-          .map(q => `<button type="button" hx-post="/ask/${q.id}">${esc(q.text)}</button>`);
+          .map(q => q.hint && locked
+            ? `<button type="button" disabled>${esc(q.text)} (unlocks after 5 questions, costs 3)</button>`
+            : `<button type="button" hx-post="/ask/${q.id}">${esc(q.text)}${q.hint ? ' (costs 3)' : ''}</button>`);
       },
       glist: typed => {
         const tried = onPage('#guesses li', li => +li.dataset.id);
@@ -78,7 +82,7 @@
 
     // Each search box: filter as you type; arrow keys move through the list, Enter picks (the first by default).
     // The boxes are redrawn after every reply, so the listeners are on the whole page.
-    const items = box => [...box.querySelectorAll('button')];
+    const items = box => [...box.querySelectorAll('button:not([disabled])')];
     const mark = (box, i) => {
       items(box).forEach((b, n) => b.classList.toggle('active', n === i));
       items(box)[i]?.scrollIntoView({block: 'nearest'});
@@ -108,6 +112,31 @@
     let used = null;
     document.addEventListener('htmx:beforeRequest', e => { used = e.target.closest('.search')?.querySelector('input').id; });
     document.addEventListener('htmx:afterSwap', () => { if (used) document.getElementById(used)?.focus(); });
+
+    // Countdown on the result card (the only place with #next). It counts from the server's data-left, not the player's clock.
+    let end, timer;
+    const tick = () => {
+      const el = document.getElementById('next');
+      if (!el) return clearInterval(timer);
+      const left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+      const t = [Math.floor(left / 3600), Math.floor(left / 60) % 60, left % 60].map((n, i) => String(n).padStart(i ? 2 : 1, '0')).join(':');
+      const at = new Date(end).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+      el.textContent = `Next puzzle in ${t} (at ${at} your time)`;
+      if (left === 0) { // wait 0-60 seconds so open pages do not all reload together
+        clearInterval(timer);
+        setTimeout(() => location.reload(), Math.random() * 60000);
+      }
+    };
+    const startCountdown = () => {
+      clearInterval(timer);
+      const el = document.getElementById('next');
+      if (!el) return;
+      end = Date.now() + el.dataset.left * 1000;
+      tick();
+      timer = setInterval(tick, 1000);
+    };
+    document.addEventListener('htmx:afterSwap', startCountdown);
+    startCountdown();
   </script>
 </body>
 </html>
